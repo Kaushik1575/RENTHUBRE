@@ -41,6 +41,7 @@ const BookingForm = () => {
     const [bookingId, setBookingId] = useState(null); // Store booking ID for invoice download
     const [formattedBookingId, setFormattedBookingId] = useState(null); // Store formatted ID for display/download
     const [downloadingInvoice, setDownloadingInvoice] = useState(false); // Invoice download state
+    const [fetchingLocation, setFetchingLocation] = useState(false); // Live location fetch state
 
     // Popup State
     const [popup, setPopup] = useState({
@@ -651,15 +652,101 @@ const BookingForm = () => {
                             <div style={{ marginTop: '20px' }}>
                                 <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#166534' }}>Delivery Location</label>
 
-                                {/* Search Box */}
-                                <input
-                                    id="delivery-address-input"
-                                    type="text"
-                                    placeholder="Search your delivery location..."
-                                    value={formData.deliveryAddress}
-                                    onChange={(e) => setFormData({...formData, deliveryAddress: e.target.value})}
-                                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0', fontSize: '1rem', marginBottom: '15px', boxSizing: 'border-box' }}
-                                />
+                                {/* Search Box + Live Location Button Row */}
+                                <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', alignItems: 'stretch' }}>
+                                    <input
+                                        id="delivery-address-input"
+                                        type="text"
+                                        placeholder="Search your delivery location..."
+                                        value={formData.deliveryAddress}
+                                        onChange={(e) => setFormData({...formData, deliveryAddress: e.target.value})}
+                                        style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0', fontSize: '1rem', boxSizing: 'border-box', outline: 'none' }}
+                                    />
+                                    <button
+                                        type="button"
+                                        title="Use my live location"
+                                        disabled={fetchingLocation}
+                                        onClick={() => {
+                                            if (!navigator.geolocation) {
+                                                setPopup({ isOpen: true, type: 'error', title: 'Not Supported', message: 'Geolocation is not supported by your browser.' });
+                                                return;
+                                            }
+                                            setFetchingLocation(true);
+                                            navigator.geolocation.getCurrentPosition(
+                                                (position) => {
+                                                    const liveLoc = {
+                                                        lat: position.coords.latitude,
+                                                        lng: position.coords.longitude
+                                                    };
+                                                    // Reverse geocode to get human-readable address
+                                                    if (window.google) {
+                                                        const geocoder = new window.google.maps.Geocoder();
+                                                        geocoder.geocode({ location: liveLoc }, (results, status) => {
+                                                            setFetchingLocation(false);
+                                                            if (status === 'OK' && results[0]) {
+                                                                // Fill the input field with the address
+                                                                const addressInput = document.getElementById('delivery-address-input');
+                                                                if (addressInput) addressInput.value = results[0].formatted_address;
+                                                                calculateDistance(liveLoc, results[0].formatted_address);
+                                                            } else {
+                                                                // Fallback: use raw coordinates as address
+                                                                calculateDistance(liveLoc, `${liveLoc.lat.toFixed(5)}, ${liveLoc.lng.toFixed(5)}`);
+                                                            }
+                                                        });
+                                                    } else {
+                                                        setFetchingLocation(false);
+                                                        calculateDistance(liveLoc, `${liveLoc.lat.toFixed(5)}, ${liveLoc.lng.toFixed(5)}`);
+                                                    }
+                                                },
+                                                (err) => {
+                                                    setFetchingLocation(false);
+                                                    setPopup({
+                                                        isOpen: true,
+                                                        type: 'error',
+                                                        title: 'Location Denied',
+                                                        message: 'Could not get your location. Please allow location access or type your address manually.'
+                                                    });
+                                                },
+                                                { enableHighAccuracy: true, timeout: 10000 }
+                                            );
+                                        }}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '0 16px',
+                                            borderRadius: '8px',
+                                            border: 'none',
+                                            background: fetchingLocation
+                                                ? '#9ca3af'
+                                                : 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                                            color: 'white',
+                                            fontWeight: '700',
+                                            fontSize: '0.85rem',
+                                            cursor: fetchingLocation ? 'not-allowed' : 'pointer',
+                                            whiteSpace: 'nowrap',
+                                            boxShadow: '0 2px 8px rgba(34,197,94,0.35)',
+                                            transition: 'all 0.2s ease',
+                                            minWidth: '48px'
+                                        }}
+                                    >
+                                        {fetchingLocation ? (
+                                            <>
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite' }}>
+                                                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                                                </svg>
+                                                <span>Locating...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+                                                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                                                </svg>
+                                                <span>📍 My Location</span>
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
 
                                 {/* Google Maps Directions Embed — updates reactively */}
                                 <div style={{ width: '100%', borderRadius: '14px', overflow: 'hidden', border: '2px solid #bbf7d0', marginBottom: '15px', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}>
