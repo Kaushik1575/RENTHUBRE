@@ -115,71 +115,40 @@ const BookingForm = () => {
             setCouponInput(location.state.autoApplyCode);
         }
 
-        // Initialize Google Maps Autocomplete
-        if (window.google && formData.deliveryOption === 'home_delivery') {
+    }, [vehicleId, apiType, navigate, searchParams, location.state]);
+
+    // Initialize Google Places Autocomplete when user selects Home Delivery
+    // (The visual map is now handled by the Google Maps Embed iframe — no JS map needed)
+    useEffect(() => {
+        if (formData.deliveryOption !== 'home_delivery') return;
+        if (!window.google) return;
+
+        // Small delay to ensure input is mounted after React renders
+        const timer = setTimeout(() => {
             const input = document.getElementById('delivery-address-input');
-            if (input) {
-                const autocomplete = new window.google.maps.places.Autocomplete(input, {
-                    componentRestrictions: { country: 'in' },
-                    fields: ['address_components', 'geometry', 'formatted_address']
-                });
+            if (!input) return;
 
-                autocomplete.addListener('place_changed', () => {
-                    const place = autocomplete.getPlace();
-                    if (!place.geometry) return;
+            const autocomplete = new window.google.maps.places.Autocomplete(input, {
+                componentRestrictions: { country: 'in' },
+                fields: ['address_components', 'geometry', 'formatted_address']
+            });
 
-                    const userLoc = {
-                        lat: place.geometry.location.lat(),
-                        lng: place.geometry.location.lng()
-                    };
+            autocomplete.addListener('place_changed', () => {
+                const place = autocomplete.getPlace();
+                if (!place.geometry) return;
 
-                    calculateDistance(userLoc, place.formatted_address);
-                });
-            }
+                const userLoc = {
+                    lat: place.geometry.location.lat(),
+                    lng: place.geometry.location.lng()
+                };
 
-            // Initialize Visual Map
-            const mapContainer = document.getElementById('delivery-map');
-            if (mapContainer) {
-                const map = new window.google.maps.Map(mapContainer, {
-                    center: SHOP_LOCATION,
-                    zoom: 13,
-                    styles: [
-                        { "featureType": "poi", "stylers": [{ "visibility": "off" }] }
-                    ]
-                });
+                // Update state — the iframe src updates automatically via React re-render
+                calculateDistance(userLoc, place.formatted_address);
+            });
+        }, 100);
 
-                // Shop Marker
-                new window.google.maps.Marker({
-                    position: SHOP_LOCATION,
-                    map: map,
-                    title: 'Our Shop',
-                    icon: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png'
-                });
-
-                // Draggable Delivery Marker
-                const deliveryMarker = new window.google.maps.Marker({
-                    position: formData.lat ? {lat: formData.lat, lng: formData.lng} : SHOP_LOCATION,
-                    map: map,
-                    draggable: true,
-                    title: 'Your House',
-                    icon: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png'
-                });
-
-                deliveryMarker.addListener('dragend', () => {
-                    const pos = deliveryMarker.getPosition();
-                    const newLoc = { lat: pos.lat(), lng: pos.lng() };
-                    
-                    // Get Address from Lat/Lng (Reverse Geocoding)
-                    const geocoder = new window.google.maps.Geocoder();
-                    geocoder.geocode({ location: newLoc }, (results, status) => {
-                        if (status === 'OK' && results[0]) {
-                            calculateDistance(newLoc, results[0].formatted_address);
-                        }
-                    });
-                });
-            }
-        }
-    }, [vehicleId, apiType, navigate, searchParams, location.state, formData.deliveryOption]);
+        return () => clearTimeout(timer);
+    }, [formData.deliveryOption]);
 
     const calculateDistance = (userLoc, address) => {
         if (!window.google) return;
@@ -681,35 +650,53 @@ const BookingForm = () => {
                         {formData.deliveryOption === 'home_delivery' && (
                             <div style={{ marginTop: '20px' }}>
                                 <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#166534' }}>Delivery Location</label>
-                                
+
                                 {/* Search Box */}
-                                <input 
+                                <input
                                     id="delivery-address-input"
                                     type="text"
                                     placeholder="Search your delivery location..."
                                     value={formData.deliveryAddress}
                                     onChange={(e) => setFormData({...formData, deliveryAddress: e.target.value})}
-                                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0', fontSize: '1rem', marginBottom: '15px' }}
+                                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0', fontSize: '1rem', marginBottom: '15px', boxSizing: 'border-box' }}
                                 />
 
-                                {/* Interactive Map Container */}
-                                <div id="delivery-map" style={{ 
-                                    width: '100%', height: '300px', borderRadius: '12px', 
-                                    border: '2px solid #bbf7d0', background: '#f8fafc',
-                                    marginBottom: '15px', overflow: 'hidden' 
-                                }}>
-                                    <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
-                                        Loading Live Map...
-                                    </div>
+                                {/* Google Maps Directions Embed — updates reactively */}
+                                <div style={{ width: '100%', borderRadius: '14px', overflow: 'hidden', border: '2px solid #bbf7d0', marginBottom: '15px', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}>
+                                    {formData.lat && formData.lng ? (
+                                        <iframe
+                                            key={`${formData.lat}-${formData.lng}`}
+                                            title="Delivery Route"
+                                            width="100%"
+                                            height="360"
+                                            style={{ border: 0, display: 'block' }}
+                                            loading="lazy"
+                                            allowFullScreen
+                                            referrerPolicy="no-referrer-when-downgrade"
+                                            src={`https://www.google.com/maps/embed/v1/directions?key=AIzaSyDIIoFnrdbqEuukqUQ5XH4sNhD_9KncetA&origin=${SHOP_LOCATION.lat},${SHOP_LOCATION.lng}&destination=${formData.lat},${formData.lng}&mode=driving&language=en`}
+                                        />
+                                    ) : (
+                                        /* Placeholder before location is picked */
+                                        <iframe
+                                            title="Shop Location"
+                                            width="100%"
+                                            height="360"
+                                            style={{ border: 0, display: 'block' }}
+                                            loading="lazy"
+                                            allowFullScreen
+                                            referrerPolicy="no-referrer-when-downgrade"
+                                            src={`https://www.google.com/maps/embed/v1/place?key=AIzaSyDIIoFnrdbqEuukqUQ5XH4sNhD_9KncetA&q=${SHOP_LOCATION.lat},${SHOP_LOCATION.lng}&zoom=14`}
+                                        />
+                                    )}
                                 </div>
 
                                 {formData.distance > 0 && (
-                                    <div style={{ 
-                                        padding: '15px', background: 'white', borderRadius: '10px', 
+                                    <div style={{
+                                        padding: '15px', background: 'white', borderRadius: '10px',
                                         boxShadow: '0 2px 10px rgba(0,0,0,0.05)', border: '1px solid #bbf7d0'
                                     }}>
                                         <div style={{ fontSize: '0.9rem', color: '#15803d', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
-                                            <i className="fas fa-route"></i> 
+                                            <i className="fas fa-route"></i>
                                             <span>Road Distance: {formData.distance} KM</span>
                                         </div>
                                         <div style={{ fontSize: '0.85rem', color: '#166534' }}>
@@ -717,8 +704,9 @@ const BookingForm = () => {
                                         </div>
                                     </div>
                                 )}
-                                <p style={{ fontSize: '0.75rem', color: '#666', marginTop: '10px' }}>
-                                    💡 Tip: You can drag the red pin on the map to your exact house!
+
+                                <p style={{ fontSize: '0.75rem', color: '#888', marginTop: '10px', textAlign: 'center' }}>
+                                    📍 Search your location above — the route will appear on the map automatically.
                                 </p>
                             </div>
                         )}
