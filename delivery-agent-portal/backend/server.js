@@ -112,6 +112,79 @@ app.post('/api/register/verify-otp', (req, res) => {
   }
 });
 
+// --- DELIVERY ENDPOINTS ---
+
+const { createClient } = require('@supabase/supabase-js');
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+// Accept Delivery Task
+app.post('/api/bookings/:bookingId/accept-delivery', async (req, res) => {
+  const { bookingId } = req.params;
+  const { agentId } = req.body;
+
+  try {
+    console.log(`🤝 Agent ${agentId} is accepting booking ${bookingId}`);
+
+    // 1. Update Booking Status to accepted
+    const { data: booking, error: uError } = await supabase
+      .from('bookings')
+      .update({ delivery_status: 'accepted' })
+      .eq('id', bookingId)
+      .select('*, users:user_id(full_name, email)')
+      .single();
+
+    if (uError) throw uError;
+
+    // 2. Fetch Agent Details
+    const { data: agent, error: aError } = await supabase
+      .from('delivery_agents')
+      .select('*')
+      .eq('id', agentId)
+      .single();
+
+    if (aError) throw aError;
+
+    // 3. Notify User with Tracking Link
+    try {
+      const trackingLink = `${process.env.FRONTEND_URL}/my-bookings?track=${bookingId}`;
+      const html = `
+        <div style="font-family: sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px; border-radius: 10px;">
+            <h2 style="color: #16a34a;">✅ Delivery Agent Confirmed!</h2>
+            <p>Hello ${booking.users.full_name},</p>
+            <p>Great news! Your delivery agent <b>${agent.full_name}</b> has accepted your request and is preparing for pickup.</p>
+            
+            <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 5px 0;"><b>Agent Name:</b> ${agent.full_name}</p>
+                <p style="margin: 5px 0;"><b>Contact:</b> <a href="tel:${agent.mobile}">${agent.mobile}</a></p>
+            </div>
+
+            <p>You can track the live position of your vehicle using the link below:</p>
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${trackingLink}" style="background: #16a34a; color: white; padding: 15px 30px; text-decoration: none; border-radius: 50px; font-weight: bold; font-size: 1.1em; box-shadow: 0 4px 10px rgba(22,163,74,0.3);">📍 Track Your Ride Live</a>
+            </div>
+            <p style="color: #666; font-size: 0.85em;">The tracking will become active as soon as the agent starts the ride.</p>
+        </div>
+      `;
+
+      await resend.emails.send({
+        from: `${process.env.SENDER_NAME} <${process.env.SENDER_EMAIL}>`,
+        to: booking.users.email,
+        subject: `Delivery Update for Booking #${booking.booking_id || bookingId}`,
+        html: html
+      });
+      
+      console.log('✅ Tracking email sent to customer');
+    } catch (emailErr) {
+      console.error('⚠️ Failed to send tracking email:', emailErr);
+    }
+
+    res.json({ success: true, message: 'Task accepted and customer notified.' });
+  } catch (error) {
+    console.error('❌ Accept Delivery Error:', error);
+    res.status(500).json({ error: 'Failed to accept delivery: ' + error.message });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Delivery Agent Backend running on port ${port}`);
 });

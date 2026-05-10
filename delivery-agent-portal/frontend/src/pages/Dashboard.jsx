@@ -13,12 +13,44 @@ const Dashboard = () => {
   const [isOnline, setIsOnline] = useState(false);
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState([]);
+  const [actionLoading, setActionLoading] = useState(null); // Track which task is being updated
   const [stats, setStats] = useState({ todayDeliveries: 0, earnings: 0, activeTasks: 0, pendingTasks: 0 });
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchAgentProfile();
   }, []);
+
+  // --- LIVE TRACKING LOGIC ---
+  useEffect(() => {
+    let watchId = null;
+
+    if (isOnline && agent) {
+      console.log('📡 Starting Live Tracking...');
+      watchId = navigator.geolocation.watchPosition(
+        async (position) => {
+          const { latitude, longitude } = position.coords;
+          console.log(`📍 Location Update: ${latitude}, ${longitude}`);
+          
+          // Update Supabase with current position
+          await supabase
+            .from('delivery_agents')
+            .update({ 
+              current_lat: latitude, 
+              current_lng: longitude,
+              last_active: new Date().toISOString()
+            })
+            .eq('id', agent.id);
+        },
+        (error) => console.error('Tracking Error:', error),
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
+      );
+    }
+
+    return () => {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+    };
+  }, [isOnline, agent]);
 
   const fetchAgentProfile = async () => {
     try {
@@ -35,30 +67,46 @@ const Dashboard = () => {
       setAgent(data);
       setIsOnline(data.availability_status === 'Online');
       fetchTasks(user.id);
-      
-      // Real-time subscription for new assignments
-      const subscription = supabase
-        .channel('booking-assignments')
-        .on('postgres_changes', { 
-          event: '*', 
-          schema: 'public', 
-          table: 'bookings',
-          filter: `agent_id=eq.${user.id}`
-        }, (payload) => {
-          fetchTasks(user.id);
-        })
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(subscription);
-      };
     } catch (error) {
       console.error('Error fetching profile:', error);
+      alert('Dashboard Error: ' + error.message);
       navigate('/login');
     } finally {
       setLoading(false);
     }
   };
+
+  // --- REAL-TIME SUBSCRIPTION ---
+  useEffect(() => {
+    let subscription = null;
+    let userId = null;
+
+    const setupSubscription = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      userId = user.id;
+
+      subscription = supabase
+        .channel(`agent-tasks-${userId}`)
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'bookings',
+          filter: `agent_id=eq.${userId}`
+        }, () => {
+          fetchTasks(userId);
+        })
+        .subscribe();
+    };
+
+    setupSubscription();
+
+    return () => {
+      if (subscription) {
+        supabase.removeChannel(subscription);
+      }
+    };
+  }, []);
 
   const fetchTasks = async (agentId) => {
     try {
@@ -84,8 +132,30 @@ const Dashboard = () => {
     }
   };
 
+  const acceptTask = async (task) => {
+    try {
+      setActionLoading(task.id);
+      // Call official backend API for acceptance and user notification
+      const response = await fetch(`${import.meta.env.VITE_API_URL.replace('/api', '')}/api/bookings/${task.id}/accept-delivery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: agent.id })
+      });
+
+      if (!response.ok) throw new Error('Failed to accept task via API');
+
+      alert('Task Accepted! The customer has been notified with your details and tracking link.');
+      fetchTasks(agent.id);
+    } catch (error) {
+      alert('Failed to accept task: ' + error.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const updateTaskStatus = async (bookingId, newStatus) => {
     try {
+      setActionLoading(bookingId);
       const { error } = await supabase
         .from('bookings')
         .update({ delivery_status: newStatus })
@@ -95,21 +165,54 @@ const Dashboard = () => {
       fetchTasks(agent.id);
     } catch (error) {
       alert('Failed to update task status');
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const toggleStatus = async () => {
+    if (!agent) return alert('Profile not loaded yet');
+
     const newStatus = isOnline ? 'Offline' : 'Online';
+    try {
+      console.log('🔄 Attempting to save status to DB:', newStatus);
+      const { data, error } = await supabase
+        .from('delivery_agents')
+        .update({ 
+          availability_status: newStatus,
+          current_status: newStatus === 'Online' ? 'AT_SHOP' : 'OFFLINE'
+        })
+        .eq('id', agent.id)
+        .select();
+
+      if (error) {
+        console.error('❌ DB Update Error:', error);
+        throw error;
+      }
+
+      if (data && data.length > 0) {
+        console.log('✅ Status saved successfully:', data[0]);
+        setIsOnline(newStatus === 'Online');
+      } else {
+        throw new Error('No rows updated. Check your permissions.');
+      }
+    } catch (error) {
+      alert('Failed to update status: ' + error.message);
+    }
+  };
+
+  const markArrivedAtShop = async () => {
     try {
       const { error } = await supabase
         .from('delivery_agents')
-        .update({ availability_status: newStatus })
+        .update({ current_status: 'AT_SHOP' })
         .eq('id', agent.id);
 
       if (error) throw error;
-      setIsOnline(!isOnline);
+      setAgent(prev => ({ ...prev, current_status: 'AT_SHOP' }));
+      alert('Welcome back! You are now eligible for new assignments.');
     } catch (error) {
-      alert('Failed to update status');
+      console.error(error);
     }
   };
 
@@ -248,10 +351,10 @@ const Dashboard = () => {
                           borderRadius: '50px', 
                           fontSize: '0.75rem', 
                           fontWeight: 700,
-                          background: task.delivery_status === 'pending' ? '#fef3c7' : '#dcfce7',
-                          color: task.delivery_status === 'pending' ? '#d97706' : '#10b981'
+                          background: task.delivery_status === 'assigned' ? '#e0e7ff' : (task.delivery_status === 'pending' ? '#fef3c7' : '#dcfce7'),
+                          color: task.delivery_status === 'assigned' ? '#4338ca' : (task.delivery_status === 'pending' ? '#d97706' : '#10b981')
                         }}>
-                          {task.delivery_status?.toUpperCase() || 'PENDING'}
+                          {task.delivery_status === 'assigned' ? 'NEW ASSIGNMENT' : (task.delivery_status?.toUpperCase() || 'PENDING')}
                         </span>
                       </div>
                     </div>
@@ -277,14 +380,57 @@ const Dashboard = () => {
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        {task.delivery_status === 'pending' && (
-                          <button onClick={() => updateTaskStatus(task.id, 'picked_up')} className="primary" style={{ padding: '8px 16px', fontSize: '0.8rem' }}>Pick Up</button>
+                        {(task.delivery_status === 'assigned' || task.delivery_status === 'pending') && (
+                          <button 
+                            onClick={() => acceptTask(task)} 
+                            className="primary" 
+                            disabled={actionLoading === task.id}
+                            style={{ padding: '8px 16px', fontSize: '0.8rem', background: '#4338ca', opacity: actionLoading === task.id ? 0.7 : 1 }}
+                          >
+                            {actionLoading === task.id ? 'Processing...' : 'Accept Task'}
+                          </button>
+                        )}
+                        {task.delivery_status === 'accepted' && (
+                          <button 
+                            onClick={() => updateTaskStatus(task.id, 'picked_up')} 
+                            className="primary" 
+                            disabled={actionLoading === task.id}
+                            style={{ padding: '8px 16px', fontSize: '0.8rem', opacity: actionLoading === task.id ? 0.7 : 1 }}
+                          >
+                            {actionLoading === task.id ? 'Processing...' : 'Pick Up Vehicle'}
+                          </button>
                         )}
                         {task.delivery_status === 'picked_up' && (
-                          <button onClick={() => updateTaskStatus(task.id, 'out_for_delivery')} className="primary" style={{ padding: '8px 16px', fontSize: '0.8rem' }}>Start Delivery</button>
+                          <button 
+                            onClick={() => updateTaskStatus(task.id, 'out_for_delivery')} 
+                            className="primary" 
+                            disabled={actionLoading === task.id}
+                            style={{ padding: '8px 16px', fontSize: '0.8rem', background: '#10b981', opacity: actionLoading === task.id ? 0.7 : 1 }}
+                          >
+                            {actionLoading === task.id ? 'Processing...' : 'Start Ride'}
+                          </button>
                         )}
                         {task.delivery_status === 'out_for_delivery' && (
-                          <button onClick={() => updateTaskStatus(task.id, 'delivered')} className="primary" style={{ padding: '8px 16px', fontSize: '0.8rem', background: 'var(--success)' }}>Mark Delivered</button>
+                          <button 
+                            onClick={async () => {
+                              try {
+                                setActionLoading(task.id);
+                                await updateTaskStatus(task.id, 'delivered');
+                                // After delivery, set agent to RETURNING state
+                                await supabase.from('delivery_agents').update({ current_status: 'RETURNING' }).eq('id', agent.id);
+                                setAgent(prev => ({ ...prev, current_status: 'RETURNING' }));
+                              } catch (e) {
+                                console.error(e);
+                              } finally {
+                                setActionLoading(null);
+                              }
+                            }} 
+                            className="primary" 
+                            disabled={actionLoading === task.id}
+                            style={{ padding: '8px 16px', fontSize: '0.8rem', background: 'var(--success)', opacity: actionLoading === task.id ? 0.7 : 1 }}
+                          >
+                            {actionLoading === task.id ? 'Processing...' : 'Mark Delivered'}
+                          </button>
                         )}
                       </div>
                     </div>
@@ -319,6 +465,23 @@ const Dashboard = () => {
               <div style={{ fontSize: '0.75rem', padding: '12px', background: '#f8fafc', borderRadius: '10px', color: 'var(--text-secondary)' }}>
                 You will only receive delivery requests within a 15km radius of this zone.
               </div>
+
+              {agent?.current_status === 'RETURNING' && (
+                <motion.div 
+                  initial={{ scale: 0.9, opacity: 0 }} 
+                  animate={{ scale: 1, opacity: 1 }}
+                  style={{ marginTop: '20px', padding: '15px', background: '#fff7ed', borderRadius: '12px', border: '2px solid #fdba74', textAlign: 'center' }}
+                >
+                  <p style={{ fontWeight: 800, color: '#9a3412', marginBottom: '10px' }}>Are you back at the shop?</p>
+                  <button 
+                    onClick={markArrivedAtShop}
+                    className="primary" 
+                    style={{ background: '#ea580c', width: '100%' }}
+                  >
+                    I am Back at Shop
+                  </button>
+                </motion.div>
+              )}
             </div>
 
             <div className="glass-card" style={{ padding: '25px', background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', border: 'none' }}>
