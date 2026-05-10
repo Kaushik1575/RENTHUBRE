@@ -111,7 +111,7 @@ router.get('/trackBooking', async (req, res) => {
         // Try to fetch booking from supabase
         try {
             console.log(`🔍 [TrackBooking] Request received for ID: '${id}'`);
-            let query = supabase.from('bookings').select('id, user_id, status, start_date, start_time, duration, vehicle_id, vehicle_type, advance_payment, created_at, booking_id, refund_amount, refund_status, confirmation_timestamp');
+            let query = supabase.from('bookings').select('id, user_id, status, start_date, start_time, duration, vehicle_id, vehicle_type, advance_payment, created_at, booking_id, refund_amount, refund_status, confirmation_timestamp, delivery_option, delivery_status, agent_id, delivery_fee');
 
             // Check if input looks like a string booking ID (starts with RH or BK)
             const idStr = id.toString().trim();

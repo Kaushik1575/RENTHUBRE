@@ -745,7 +745,12 @@ ${isRefund ? `Refund: ₹${Math.abs(balance)}` : `Balance: ₹${balance}`}
                     {/* BOOKINGS */}
                     {activeTab === 'bookings' && (
                         <div id="bookings" className="content-section active">
-                            <h2>Bookings</h2>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                                <h2 style={{ margin: 0 }}>Bookings</h2>
+                                <button onClick={() => loadBookings()} style={{ background: '#166534', color: 'white', border: 'none', borderRadius: '5px', padding: '8px 15px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <i className="fas fa-sync-alt"></i> Refresh List
+                                </button>
+                            </div>
                             <div className="booking-filters">
                                 <div><label>Search:</label><input type="text" placeholder="Name, Vehicle, or ID" value={bookingsSearch} onChange={e => setBookingsSearch(e.target.value)} /></div>
                                 <div>
@@ -774,7 +779,14 @@ ${isRefund ? `Refund: ₹${Math.abs(balance)}` : `Balance: ₹${balance}`}
                                         {filteredBookings.map(b => (
                                             <tr key={b.id}>
                                                 <td>{b.booking_id || `#${b.id}`}</td>
-                                                <td>{b.customerName}</td>
+                                                <td>
+                                                    {b.customerName}
+                                                    {b.delivery_option === 'home_delivery' && (
+                                                        <span style={{ display: 'block', fontSize: '0.75rem', background: '#fff7ed', color: '#9a3412', padding: '2px 6px', borderRadius: '4px', border: '1px solid #ffedd5', marginTop: '4px', width: 'fit-content' }}>
+                                                            <i className="fas fa-truck"></i> Home Delivery
+                                                        </span>
+                                                    )}
+                                                </td>
                                                 <td>{b.vehicleName}</td>
                                                 <td>{b.start_date}</td>
                                                 <td>{b.duration} hrs</td>
@@ -1553,6 +1565,11 @@ ${isRefund ? `Refund: ₹${Math.abs(balance)}` : `Balance: ₹${balance}`}
                         <div className="booking-details">
                             <h4 style={{ color: '#4CAF50', margin: '0 0 15px 0' }}>Booking ID: {modal.data.booking_id || `#${modal.data.id}`}</h4>
 
+                            <p><strong>Service Type:</strong> {modal.data.delivery_option === 'home_delivery' ? (
+                                <span style={{ color: '#9a3412', fontWeight: 'bold' }}>🏠 Home Delivery</span>
+                            ) : (
+                                <span style={{ color: '#166534', fontWeight: 'bold' }}>🏪 Self Pickup</span>
+                            )}</p>
                             <p><strong>Vehicle:</strong> {modal.data.vehicleName} {modal.data.vehicleType ? `(${modal.data.vehicleType})` : ''}</p>
                             <p><strong>Start Date:</strong> {modal.data.start_date} ({modal.data.start_time})</p>
 
@@ -1591,12 +1608,12 @@ ${isRefund ? `Refund: ₹${Math.abs(balance)}` : `Balance: ₹${balance}`}
                             <p style={{ marginTop: '15px' }}><strong>Status:</strong> <span className={`status-badge status-${(modal.data.status || 'pending').toLowerCase()}`}>{modal.data.status}</span></p>
 
                             {/* Delivery Info Section */}
-                            {modal.data.delivery_option === 'delivery' && (
+                            {modal.data.delivery_option === 'home_delivery' && (
                                 <div style={{ marginTop: '20px', padding: '15px', background: '#fff7ed', borderRadius: '8px', border: '1px solid #ffedd5' }}>
                                     <h4 style={{ margin: '0 0 10px 0', color: '#9a3412' }}><i className="fas fa-truck"></i> Home Delivery Info</h4>
                                     <p><strong>Address:</strong> {modal.data.delivery_address || 'Not Provided'}</p>
                                     <p><strong>Distance:</strong> {modal.data.distance} km</p>
-                                    <p><strong>Delivery Fee:</strong> ₹{modal.data.delivery_fee}</p>
+                                    <p><strong>Delivery Fee:</strong> ₹{modal.data.delivery_fee} (2-Way)</p>
                                     
                                     <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #ffedd5' }}>
                                         <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', fontWeight: '600' }}>Assign Delivery Agent:</label>
@@ -1743,11 +1760,35 @@ ${isRefund ? `Refund: ₹${Math.abs(balance)}` : `Balance: ₹${balance}`}
                                 <select value={editBookingData.status} onChange={e => setEditBookingData({ ...editBookingData, status: e.target.value })} className="form-control">
                                     <option value="pending">Pending</option>
                                     <option value="confirmed">Confirmed</option>
+                                    <option value="ride_started">Ride Started</option>
+                                    <option value="completed">Completed</option>
                                     <option value="cancelled">Cancelled</option>
                                     <option value="rejected">Rejected</option>
                                 </select>
                             </div>
-                            <button className="action-btn btn-confirm">Save</button>
+
+                            {editBookingData.delivery_option === 'home_delivery' && (
+                                <div style={{ marginBottom: '12px' }}>
+                                    <label>Delivery Status (Manual Override)</label>
+                                    <select 
+                                        value={editBookingData.delivery_status || ''} 
+                                        onChange={e => setEditBookingData({ ...editBookingData, delivery_status: e.target.value })} 
+                                        className="form-control"
+                                        style={{ border: '1px solid #ff9800' }}
+                                    >
+                                        <option value="">Not Assigned</option>
+                                        <option value="pending">Pending Acceptance</option>
+                                        <option value="accepted">Accepted by Agent</option>
+                                        <option value="picked_up">Picked Up</option>
+                                        <option value="out_for_delivery">Out for Delivery</option>
+                                        <option value="delivered">Delivered</option>
+                                        <option value="returned">Returned</option>
+                                        <option value="cancelled">Cancelled</option>
+                                    </select>
+                                    <small style={{ color: '#f57c00' }}>⚠️ Overriding this will update the agent's dashboard immediately.</small>
+                                </div>
+                            )}
+                            <button className="action-btn btn-confirm">Save Changes</button>
                         </form>
                     </div>
                 </div>

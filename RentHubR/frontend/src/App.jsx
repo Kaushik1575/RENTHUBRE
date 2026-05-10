@@ -15,6 +15,7 @@ import AdminPanel from './pages/AdminPanel';
 import LoyaltySettings from './pages/LoyaltySettings';
 import ForgotPassword from './pages/ForgotPassword';
 import TrackBooking from './pages/TrackBooking';
+import LiveTracking from './pages/LiveTracking';
 import SOSActivate from './pages/SOSActivate';
 import ProfilePage from './pages/ProfilePage';
 import GlobalAuthCheck from './components/GlobalAuthCheck';
@@ -102,6 +103,7 @@ function Layout() {
         {/* Loyalty settings route removed */}
         <Route path="/booking-form" element={<BookingForm />} />
         <Route path="/track-booking" element={<TrackBooking />} />
+        <Route path="/live-tracking" element={<LiveTracking />} />
         <Route path="/sos-activate" element={<SOSActivate />} />
         <Route path="/vehicle/:type/:id" element={<VehicleDetails />} />
         <Route path="/support" element={<SupportPage />} />

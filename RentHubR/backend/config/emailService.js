@@ -144,12 +144,16 @@ async function sendBookingConfirmationEmail(userEmail, userName, bookingDetails)
                                         </ul>
                                     </div>
 
-                                    <!-- Action Links -->
                                     <div style="text-align: center; border-top: 1px solid #edf2f7; padding-top: 35px;">
-                                        <p style="color: #718096; font-size: 14px; margin-bottom: 20px;">Need immediate assistance?</p>
-                                        <a href="tel:+919040757683" style="display: inline-block; background: #3182ce; color: white; padding: 14px 28px; border-radius: 50px; text-decoration: none; font-weight: 700; font-size: 16px; box-shadow: 0 4px 10px rgba(49, 130, 206, 0.3);">
-                                            📞 Call Support Team (+91 9040757683)
+                                        <p style="color: #718096; font-size: 14px; margin-bottom: 20px;">Manage your booking:</p>
+                                        <a href="tel:+919040757683" style="display: inline-block; background: #3182ce; color: white; padding: 14px 28px; border-radius: 50px; text-decoration: none; font-weight: 700; font-size: 16px; box-shadow: 0 4px 10px rgba(49, 130, 206, 0.3); margin: 5px;">
+                                            📞 Support
                                         </a>
+                                        ${bookingDetails.deliveryOption === 'home_delivery' || bookingDetails.delivery_option === 'home_delivery' ? `
+                                        <a href="${process.env.FRONTEND_URL}/my-bookings" style="display: inline-block; background: #16a34a; color: white; padding: 14px 28px; border-radius: 50px; text-decoration: none; font-weight: 700; font-size: 16px; box-shadow: 0 4px 10px rgba(22, 163, 74, 0.3); margin: 5px;">
+                                            🏠 Change Address
+                                        </a>
+                                        ` : ''}
                                     </div>
                                 </td>
                             </tr>
@@ -828,6 +832,136 @@ async function sendAgentApprovedEmail(agentEmail, agentName) {
     });
 }
 
+async function sendAddressUpdateEmail(userEmail, userName, bookingDetails) {
+    const { bookingId, newAddress, newFee, newTotal, remainingAmount, vehicleName } = bookingDetails;
+
+    const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Address Updated Successfully</title>
+        </head>
+        <body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: 'Outfit', sans-serif;">
+            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                    <td style="padding: 40px 0;">
+                        <table align="center" border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 1px solid #e2e8f0;">
+                            <!-- Header -->
+                            <tr>
+                                <td align="center" style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); padding: 50px 20px;">
+                                    <div style="font-size: 50px; margin-bottom: 20px;">🚚</div>
+                                    <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 800;">Address Updated!</h1>
+                                    <p style="color: #dcfce7; margin: 10px 0 0 0; font-size: 16px;">We've updated your delivery logistics, ${userName}!</p>
+                                </td>
+                            </tr>
+                            
+                            <!-- Body -->
+                            <tr>
+                                <td style="padding: 40px 35px;">
+                                    <div style="background-color: #f0fdf4; border-left: 5px solid #16a34a; padding: 20px; margin-bottom: 35px; border-radius: 8px;">
+                                        <p style="margin: 0; color: #166534; font-size: 16px; line-height: 1.6;">
+                                            Your delivery address for booking <strong>${bookingId}</strong> has been successfully changed. Our delivery team has been notified of the new location.
+                                        </p>
+                                    </div>
+
+                                    <table width="100%" style="margin-bottom: 30px; border-collapse: separate; border-spacing: 0; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+                                        <tr style="background: #f8fafc;">
+                                            <td colspan="2" style="padding: 15px; color: #1e293b; font-weight: 800; border-bottom: 1px solid #e2e8f0; font-size: 17px;">
+                                                📍 New Logistics Details
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 15px; color: #64748b; border-bottom: 1px solid #f1f5f9; width: 40%;">Vehicle</td>
+                                            <td style="padding: 15px; color: #1e293b; border-bottom: 1px solid #f1f5f9; font-weight: 600;">${vehicleName}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 15px; color: #64748b; border-bottom: 1px solid #f1f5f9; width: 40%;">New Address</td>
+                                            <td style="padding: 15px; color: #1e293b; border-bottom: 1px solid #f1f5f9; font-weight: 600;">${newAddress}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 15px; color: #64748b; border-bottom: 1px solid #f1f5f9;">Updated Delivery Fee</td>
+                                            <td style="padding: 15px; color: #1e293b; border-bottom: 1px solid #f1f5f9; font-weight: 600;">₹${newFee}</td>
+                                        </tr>
+                                    </table>
+
+                                    <div style="background-color: #fffbeb; border-radius: 10px; padding: 20px; border: 1px solid #fef3c7; text-align: center;">
+                                        <p style="margin: 0; color: #92400e; font-size: 14px;">
+                                            <strong>Note:</strong> The updated delivery fee of <strong>₹${newFee}</strong> is payable directly to our agent at the time of vehicle delivery.
+                                        </p>
+                                    </div>
+
+                                    <div style="text-align: center; margin-top: 40px;">
+                                        <a href="${process.env.FRONTEND_URL}/my-bookings" style="display: inline-block; background: #16a34a; color: white; padding: 14px 30px; border-radius: 50px; text-decoration: none; font-weight: 700; font-size: 16px; box-shadow: 0 4px 15px rgba(22, 163, 74, 0.3);">
+                                            View My Bookings
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                            
+                            <!-- Footer -->
+                            <tr>
+                                <td align="center" style="background-color: #0f172a; padding: 40px 20px;">
+                                    <div style="color: #ffffff; font-size: 20px; font-weight: 800; margin-bottom: 10px;">RentHub</div>
+                                    <p style="color: #94a3b8; margin: 0; font-size: 13px;">Premium Vehicle Logistics</p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
+    `;
+
+    return sendEmail({
+        to: userEmail,
+        subject: `Delivery Address Updated - Booking #${bookingId}`,
+        html: html
+    });
+}
+
+// 1. Notify Agent about a New Job Assignment
+async function sendAgentAssignmentEmail(agentEmail, agentName, bookingId) {
+    const html = `
+        <div style="font-family: sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px; border-radius: 10px;">
+            <h2 style="color: #0284c7;">🚀 New Delivery Job Assigned!</h2>
+            <p>Hello ${agentName},</p>
+            <p>A new car delivery task (#${bookingId}) has been assigned to you. Please log in to your portal to <b>Accept</b> the task.</p>
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${process.env.FRONTEND_URL}/agent-portal" style="background: #0284c7; color: white; padding: 12px 25px; text-decoration: none; border-radius: 50px; font-weight: bold;">Go to Agent Portal</a>
+            </div>
+            <p style="color: #666; font-size: 0.8em;">Note: Please accept within 15 minutes to avoid auto-unassignment.</p>
+        </div>
+    `;
+    return sendEmail({ to: agentEmail, subject: `New Job Assignment: #${bookingId}`, html });
+}
+
+// 2. Notify User that an Agent has Accepted and provide Tracking Link
+async function sendUserTrackingEmail(userEmail, userName, agentName, agentPhone, bookingId) {
+    const trackingLink = `${process.env.FRONTEND_URL}/live-tracking?bookingId=${bookingId}`;
+    const html = `
+        <div style="font-family: sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px; border-radius: 10px;">
+            <h2 style="color: #16a34a;">✅ Delivery Agent Confirmed!</h2>
+            <p>Hello ${userName},</p>
+            <p>Great news! Your delivery agent <b>${agentName}</b> has accepted your request and is preparing for pickup.</p>
+            
+            <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 5px 0;"><b>Agent Name:</b> ${agentName}</p>
+                <p style="margin: 5px 0;"><b>Contact:</b> <a href="tel:${agentPhone}">${agentPhone}</a></p>
+            </div>
+
+            <p>You can track the live position of your vehicle using the link below:</p>
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${trackingLink}" style="background: #16a34a; color: white; padding: 15px 30px; text-decoration: none; border-radius: 50px; font-weight: bold; font-size: 1.1em; box-shadow: 0 4px 10px rgba(22,163,74,0.3);">📍 Track Your Ride Live</a>
+            </div>
+            <p style="color: #666; font-size: 0.85em;">The tracking will become active as soon as the agent starts the ride.</p>
+        </div>
+    `;
+    return sendEmail({ to: userEmail, subject: `Delivery Update for Booking #${bookingId}`, html });
+}
+
 module.exports = {
     generateOTP,
     sendBookingConfirmationEmail,
@@ -840,6 +974,9 @@ module.exports = {
     sendVehicleApprovedEmail,
     sendNewOfferEmail,
     sendAgentApprovedEmail,
+    sendAddressUpdateEmail,
+    sendAgentAssignmentEmail,
+    sendUserTrackingEmail,
     sendEmail,
     SENDER_EMAIL
 };

@@ -9,6 +9,7 @@ const { makeBookingConfirmationCall } = require('../config/retellCallService');
 const { generateBookingId } = require('../utils/bookingIdGenerator');
 const { normalizeVehicleType } = require('../utils/vehicleTypeNormalizer');
 const Razorpay = require('razorpay');
+const { sendAddressUpdateEmail } = require('../config/emailService');
 
 // Helpers
 async function checkTimeConflict(vehicleId, startDate, startTime, duration) {
@@ -331,6 +332,18 @@ const createBooking = async (req, res) => {
 
         console.log('Booking created:', data);
 
+        // --- NEW: AUTO-ASSIGN DELIVERY AGENT ---
+        if (data.delivery_option === 'home_delivery') {
+            (async () => {
+                try {
+                    const { autoAssignAgent } = require('../utils/autoAssigner');
+                    await autoAssignAgent(data.id);
+                } catch (err) {
+                    console.error('Initial auto-assignment failed:', err);
+                }
+            })();
+        }
+
         // Async Background Notification: Email & Call
         (async () => {
             try {
@@ -415,7 +428,7 @@ const createBooking = async (req, res) => {
                                                 <td style="padding: 40px 30px;">
                                                     <div style="background-color: #f8f9fa; border-left: 5px solid #667eea; padding: 15px; margin-bottom: 25px; border-radius: 4px;">
                                                         <p style="margin: 0; color: #495057; font-size: 15px;">
-                                                            <strong>Great news!</strong> Your booking has been confirmed. Your invoice is attached to this email.
+                                                            <strong>Great news!</strong> Your booking has been confirmed. ${deliveryOption === 'home_delivery' ? `Your vehicle will be delivered to: <strong>${deliveryAddress}</strong>.` : ''} Your invoice is attached to this email.
                                                         </p>
                                                     </div>
 
@@ -446,6 +459,26 @@ const createBooking = async (req, res) => {
                                                             <td style="padding: 12px 15px; color: #333; border-top: 1px solid #e0e0e0;">${duration} hours</td>
                                                         </tr>
                                                     </table>
+                                                    ${deliveryOption === 'home_delivery' ? `
+                                                    <h3 style="color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 30px;">🚚 Delivery Information</h3>
+                                                    <table width="100%" style="margin-bottom: 25px; background: #fff7ed; border-radius: 8px; overflow: hidden;">
+                                                        <tr style="background: #ffedd5;">
+                                                            <td style="padding: 12px 15px; color: #9a3412; font-weight: bold; width: 40%;">📍 Delivery Address</td>
+                                                            <td style="padding: 12px 15px; color: #333;">${deliveryAddress}</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td style="padding: 12px 15px; color: #666; border-top: 1px solid #fed7aa;">📏 Distance</td>
+                                                            <td style="padding: 12px 15px; color: #333; border-top: 1px solid #fed7aa;">${distance} KM (One Way)</td>
+                                                        </tr>
+                                                        <tr style="background: #fffaf0;">
+                                                            <td style="padding: 12px 15px; color: #666; border-top: 1px solid #fed7aa;">💸 Delivery Fee</td>
+                                                            <td style="padding: 12px 15px; color: #166534; font-weight: bold; border-top: 1px solid #fed7aa;">₹${deliveryFee} (Pay at Delivery)</td>
+                                                        </tr>
+                                                    </table>
+                                                    <p style="color: #666; font-size: 14px; margin-top: -15px; margin-bottom: 25px; font-style: italic;">
+                                                        ℹ️ Note: Our delivery agent will reach your address by <strong>${formattedStartTime}</strong>.
+                                                    </p>
+                                                    ` : ''}
 
                                                     <!-- Payment Summary -->
                                                     <h3 style="color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px;">💰 Payment Summary</h3>
@@ -469,6 +502,11 @@ const createBooking = async (req, res) => {
                                                         <a href="${gcalUrl}" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 50px; font-weight: bold; font-size: 16px; margin: 5px; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
                                                             📅 Add to Calendar
                                                         </a>
+                                                        ${deliveryOption === 'home_delivery' ? `
+                                                        <a href="${process.env.FRONTEND_URL}/my-bookings" style="display: inline-block; background: linear-gradient(135deg, #166534 0%, #15803d 100%); color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 50px; font-weight: bold; font-size: 16px; margin: 5px; box-shadow: 0 4px 12px rgba(22, 101, 52, 0.3);">
+                                                            📍 Change Address
+                                                        </a>
+                                                        ` : ''}
                                                     </div>
 
                                                     <!-- Important Notice -->
@@ -478,6 +516,7 @@ const createBooking = async (req, res) => {
                                                             <li style="margin-bottom: 5px;">Bring a valid ID proof at pickup</li>
                                                             <li style="margin-bottom: 5px;">Keep your invoice ready (attached)</li>
                                                             <li style="margin-bottom: 5px;">Pay remaining ₹${req.body.remainingAmount || 0} at pickup</li>
+                                                            ${req.body.deliveryOption === 'home_delivery' ? `<li style="margin-bottom: 5px;">Address changes allowed up to 2 hours before pickup</li>` : ''}
                                                             <li>Arrive 10 minutes early for a smooth experience</li>
                                                         </ul>
                                                     </div>
@@ -792,11 +831,182 @@ const getBookingById = async (req, res) => {
     }
 };
 
+const updateAddress = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { deliveryAddress } = req.body;
+        const userId = req.user.id;
+
+        // Fetch the booking to check the start time
+        const { data: booking, error: fetchError } = await supabase
+            .from('bookings')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !booking) {
+            return res.status(404).json({ error: 'Booking not found' });
+        }
+
+        if (booking.user_id !== userId) {
+            return res.status(403).json({ error: 'Unauthorized' });
+        }
+
+        // Check if more than 2 hours before start time
+        const startDateTime = new Date(`${booking.start_date}T${booking.start_time}:00`);
+        const now = new Date();
+        const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+        const diffHours = (startDateTime - istNow) / (1000 * 60 * 60);
+
+        if (diffHours < 2) {
+            return res.status(400).json({ error: 'Cannot change address within 2 hours of pickup. Please contact support.' });
+        }
+
+        const { distance, deliveryFee, lat, lng } = req.body;
+        
+        // Calculate the difference in fee to update total and remaining amounts
+        const oldFee = parseFloat(booking.delivery_fee || 0);
+        const newFee = parseFloat(deliveryFee || oldFee);
+        const feeDifference = newFee - oldFee;
+
+        // Update address, distance, delivery fee, and totals
+        const newTotal = parseFloat(booking.total_amount || 0) + feeDifference;
+        const newRemaining = newTotal - parseFloat(booking.advance_payment || 0);
+
+        const { data: updatedBooking, error: updateError } = await supabase
+            .from('bookings')
+            .update({ 
+                delivery_address: deliveryAddress,
+                distance: distance || booking.distance,
+                delivery_fee: newFee,
+                total_amount: newTotal,
+                remaining_amount: newRemaining,
+                lat: lat !== undefined ? lat : booking.lat,
+                lng: lng !== undefined ? lng : booking.lng
+            })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (updateError) {
+            return res.status(500).json({ error: 'Failed to update address' });
+        }
+
+        // Trigger background notification
+        (async () => {
+            console.log('--- STARTING ADDRESS UPDATE EMAIL TASK ---');
+            try {
+                // 1. Fetch User
+                const { data: userDetails, error: userError } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('id', userId)
+                    .single();
+
+                if (userError || !userDetails) {
+                    console.error('Error fetching user for email:', userError);
+                    return;
+                }
+
+                // 2. Fetch Vehicle Details
+                let vehicleName = 'Your Vehicle';
+                try {
+                    const { normalizeVehicleType } = require('../utils/vehicleTypeNormalizer');
+                    const normalizedSingular = normalizeVehicleType(updatedBooking.vehicle_type);
+                    
+                    // Map singular to plural table names
+                    let table = 'bikes';
+                    if (normalizedSingular === 'car') table = 'cars';
+                    if (normalizedSingular === 'scooty') table = 'scooty';
+                    if (normalizedSingular === 'bike') table = 'bikes';
+
+                    const { data: vehicleData } = await supabase
+                        .from(table)
+                        .select('name')
+                        .eq('id', updatedBooking.vehicle_id)
+                        .single();
+                    if (vehicleData) vehicleName = vehicleData.name;
+                } catch (vErr) {
+                    console.log('Error fetching vehicle name for update notification:', vErr);
+                }
+
+                // 3. Send Email
+                await sendAddressUpdateEmail(
+                    userDetails.email,
+                    userDetails.full_name,
+                    {
+                        bookingId: updatedBooking.booking_id || updatedBooking.id,
+                        newAddress: updatedBooking.delivery_address,
+                        newFee: updatedBooking.delivery_fee,
+                        newTotal: updatedBooking.total_amount,
+                        remainingAmount: updatedBooking.remaining_amount,
+                        vehicleName: vehicleName
+                    }
+                );
+            } catch (err) {
+                console.error('CRITICAL Error in address update notification:', err);
+            }
+        })();
+
+        res.json({ success: true, message: 'Address updated successfully', booking: updatedBooking });
+    } catch (error) {
+        console.error('Error updating address:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+};
+
+const acceptDelivery = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const { agentId } = req.body;
+
+        // 1. Update Booking Status to accepted
+        const { data: booking, error: uError } = await supabase
+            .from('bookings')
+            .update({ delivery_status: 'accepted' })
+            .eq('id', bookingId)
+            .select('*, users:user_id(full_name, email)')
+            .single();
+
+        if (uError) throw uError;
+
+        // 2. Fetch Agent Details
+        const { data: agent, error: aError } = await supabase
+            .from('delivery_agents')
+            .select('*')
+            .eq('id', agentId)
+            .single();
+
+        if (aError) throw aError;
+
+        // 3. Notify User with Tracking Link
+        try {
+            const { sendUserTrackingEmail } = require('../config/emailService');
+            await sendUserTrackingEmail(
+                booking.users.email,
+                booking.users.full_name,
+                agent.full_name,
+                agent.phone_number,
+                booking.booking_id || bookingId
+            );
+        } catch (emailErr) {
+            console.error('Failed to send tracking email:', emailErr);
+        }
+
+        res.json({ success: true, message: 'Task accepted and customer notified.' });
+    } catch (error) {
+        console.error('Accept Delivery Error:', error);
+        res.status(500).json({ error: 'Failed to accept delivery' });
+    }
+};
+
 module.exports = {
     checkAvailability,
     createBooking,
     getUserBookings,
     cancelBooking,
     submitRefundDetails,
-    getBookingById
+    updateAddress,
+    getBookingById,
+    acceptDelivery
 };

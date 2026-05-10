@@ -30,6 +30,7 @@ const TrackBooking = () => {
         }
     }, [searchParams]);
 
+
     // Auto-trigger cancellation modal if action=cancel matches
     useEffect(() => {
         const action = searchParams.get('action');
@@ -82,7 +83,7 @@ const TrackBooking = () => {
                 const vehicleName = vehicle ? vehicle.name : 'Unknown Vehicle';
                 const vehiclePrice = vehicle ? vehicle.price : 0;
                 const duration = parseInt(finalBooking.duration) || 0;
-                const totalAmount = duration * vehiclePrice;
+                const totalAmount = finalBooking.total_amount || (duration * vehiclePrice + (finalBooking.delivery_fee || 0));
                 const advancePayment = finalBooking.advance_payment ? parseFloat(finalBooking.advance_payment) : 0;
                 const remainingAmount = totalAmount - advancePayment;
 
@@ -326,6 +327,7 @@ const TrackBooking = () => {
                     </div>
                 )}
 
+
                 {result && (
                     <div style={{
                         border: '1px solid #e0e0e0', borderRadius: '8px', padding: '1.5rem',
@@ -356,7 +358,7 @@ const TrackBooking = () => {
 
                             <div style={{ marginTop: '10px', padding: '10px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #eee' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                    <span>Total Amount:</span>
+                                    <span>Total Amount {result.delivery_option === 'home_delivery' ? '(Inc. 2-Way Delivery)' : ''}:</span>
                                     <strong>₹{result.totalDisplayAmount}</strong>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
@@ -364,7 +366,7 @@ const TrackBooking = () => {
                                     <strong style={{ color: '#27ae60' }}>₹{result.displayAdvancePayment}</strong>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #eee', paddingTop: '4px' }}>
-                                    <span>Remaining to Pay:</span>
+                                    <span>Remaining to Pay {result.delivery_option === 'home_delivery' ? '(Inc. Delivery Fee)' : ''}:</span>
                                     <strong style={{ color: '#e67e22' }}>₹{result.remainingDisplayAmount > 0 ? result.remainingDisplayAmount : 0}</strong>
                                 </div>
                             </div>

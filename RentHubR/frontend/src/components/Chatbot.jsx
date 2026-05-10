@@ -130,6 +130,9 @@ const Chatbot = ({ isOpen, onClose }) => {
         } else if (lowerText === "cancel booking" || lowerText.includes("cancel booking")) {
             localResponse = "To cancel your booking, please provide your **Booking ID** (e.g., RH...).";
             localOptions = ["Go back"];
+        } else if (lowerText.includes("where is my") || lowerText.includes("track my delivery") || lowerText.includes("live tracking")) {
+            localResponse = "I can help you track your delivery in real-time! Please provide your **Booking ID** (e.g., RH...).";
+            localOptions = ["Go back"];
         } else if (lowerText === "weather & packing tips" || lowerText.includes("weather") || lowerText.includes("packing")) {
             localResponse = "I can help you check the weather and suggest what to pack! 🌤️\n\nPlease tell me your **destination location** (e.g., Mumbai, Goa, Delhi).";
             localOptions = ["Go back"];
@@ -275,7 +278,12 @@ const Chatbot = ({ isOpen, onClose }) => {
                                 time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                             }]);
                             setTimeout(() => {
-                                window.location.href = `/track-booking?bookingId=${details.bookingId}`;
+                                // If user specifically asked about tracking/location, go to live-tracking
+                                if (textToSend.toLowerCase().includes("where") || textToSend.toLowerCase().includes("track")) {
+                                    window.location.href = `/live-tracking?bookingId=${details.bookingId}`;
+                                } else {
+                                    window.location.href = `/track-booking?bookingId=${details.bookingId}`;
+                                }
                             }, 1500);
                         }, 500);
                     } catch (e) {

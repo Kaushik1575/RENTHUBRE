@@ -229,17 +229,28 @@ const deleteBooking = async (req, res) => {
 // Admin: Update booking
 const updateBooking = async (req, res) => {
     try {
-        const { startDate, startTime, duration, status, totalAmount, advancePayment, remainingAmount } = req.body;
+        const { 
+            startDate, start_date,
+            startTime, start_time,
+            duration, 
+            status, 
+            deliveryStatus, delivery_status,
+            totalAmount, total_amount,
+            advancePayment, advance_payment,
+            remainingAmount, remaining_amount
+        } = req.body;
+
         const { data, error } = await supabase
             .from('bookings')
             .update({
-                start_date: startDate,
-                start_time: startTime,
+                start_date: start_date || startDate,
+                start_time: start_time || startTime,
                 duration: duration,
                 status: status,
-                total_amount: totalAmount,
-                advance_payment: advancePayment,
-                remaining_amount: remainingAmount,
+                delivery_status: delivery_status || deliveryStatus,
+                total_amount: total_amount || totalAmount,
+                advance_payment: advance_payment || advancePayment,
+                remaining_amount: remaining_amount || remainingAmount,
                 updated_at: new Date().toISOString()
             })
             .eq('id', req.params.id)
@@ -301,6 +312,18 @@ const confirmBooking = async (req, res) => {
             .eq('id', bookingId)
             .select()
             .single();
+
+        if (updateError) throw updateError;
+
+        // --- NEW: AUTO-ASSIGN DELIVERY AGENT ---
+        if (updatedBooking.delivery_option === 'home_delivery') {
+            try {
+                const { autoAssignAgent } = require('../utils/autoAssigner');
+                await autoAssignAgent(bookingId);
+            } catch (assignError) {
+                console.error('Auto-assignment failed:', assignError);
+            }
+        }
 
         if (updateError) {
             console.error('Error updating booking:', updateError);

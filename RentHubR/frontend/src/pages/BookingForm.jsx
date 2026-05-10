@@ -35,7 +35,7 @@ const BookingForm = () => {
     });
     
     const RATE_PER_KM = 10;
-    const SHOP_LOCATION = { lat: 21.492259, lng: 86.902806 }; // Your Shop Location Updated
+    const SHOP_LOCATION = { lat: 21.4919493, lng: 86.9026929 }; // Your Shop Location Fixed
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState(false); // For API calls
     const [bookingId, setBookingId] = useState(null); // Store booking ID for invoice download
@@ -162,16 +162,16 @@ const BookingForm = () => {
             unitSystem: window.google.maps.UnitSystem.METRIC,
         }, (response, status) => {
             if (status === 'OK' && response.rows[0].elements[0].status === 'OK') {
-                const distanceInKm = response.rows[0].elements[0].distance.value / 1000;
-                const roundedDistance = Math.ceil(distanceInKm);
+                const distKm = response.rows[0].elements[0].distance.value / 1000;
+                const fee = Math.round(distKm * RATE_PER_KM * 2); // Exact 2-way fee (10/km per way)
                 
                 setFormData(prev => ({
                     ...prev,
                     deliveryAddress: address,
                     lat: userLoc.lat,
                     lng: userLoc.lng,
-                    distance: roundedDistance,
-                    deliveryFee: roundedDistance * RATE_PER_KM
+                    distance: distKm,
+                    deliveryFee: fee
                 }));
             }
         });
@@ -264,16 +264,18 @@ const BookingForm = () => {
         }
     }
 
-    let finalTotal = Math.max(0, baseTotal - discountAmount);
+    const vehicleTotal = Math.max(0, baseTotal - discountAmount);
+    
+    // 30% Advance Payment (Calculated only on vehicle total)
+    const advancePercentage = 30;
+    const advancePayment = Math.ceil((vehicleTotal * advancePercentage) / 100);
 
-    // Add Delivery Fee if Home Delivery is selected
+    // Final Total including Delivery Fee (Total value of the booking)
+    let finalTotal = vehicleTotal;
     if (formData.deliveryOption === 'home_delivery') {
         finalTotal += formData.deliveryFee;
     }
 
-    // 30% Advance Payment
-    const advancePercentage = 30;
-    const advancePayment = Math.ceil((finalTotal * advancePercentage) / 100);
     const remainingAmount = finalTotal - advancePayment;
 
     const handleChange = (e) => {
@@ -283,6 +285,17 @@ const BookingForm = () => {
     // Step 1: Check Availability
     const handleCheckAvailability = async (e) => {
         if (e) e.preventDefault(); // Handle optional event for manual calls
+
+        // Validation for Home Delivery Address
+        if (formData.deliveryOption === 'home_delivery' && (!formData.deliveryAddress || !formData.deliveryAddress.trim())) {
+            setPopup({
+                isOpen: true,
+                type: 'warning',
+                title: 'Address Required',
+                message: 'Please give your delivery location for home delivery.'
+            });
+            return;
+        }
 
         const token = localStorage.getItem('token');
         if (!token) {
@@ -644,7 +657,7 @@ const BookingForm = () => {
                                     border: '2px solid #22c55e', transition: 'all 0.2s ease', fontWeight: 'bold'
                                 }}
                             >
-                                🏠 Home Delivery (₹{RATE_PER_KM}/KM)
+                                🏠 Home Delivery (₹{RATE_PER_KM}/KM - 2 Way)
                             </div>
                         </div>
 
@@ -784,10 +797,10 @@ const BookingForm = () => {
                                     }}>
                                         <div style={{ fontSize: '0.9rem', color: '#15803d', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
                                             <i className="fas fa-route"></i>
-                                            <span>Road Distance: {formData.distance} KM</span>
+                                            <span>Road Distance: {formData.distance} KM (One Way)</span>
                                         </div>
                                         <div style={{ fontSize: '0.85rem', color: '#166534' }}>
-                                            🏠 Delivery Fee: <span style={{ fontSize: '1.1rem', fontWeight: 800 }}>₹{formData.deliveryFee}</span>
+                                            🏠 Delivery Fee (2-Way): <span style={{ fontSize: '1.1rem', fontWeight: 800 }}>₹{formData.deliveryFee}</span>
                                         </div>
                                     </div>
                                 )}
@@ -1054,9 +1067,12 @@ const BookingForm = () => {
                             </div>
                             
                             {formData.deliveryOption === 'home_delivery' && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: '#15803d', fontSize: '0.9rem' }}>
-                                    <span>Delivery Fare ({formData.distance} KM):</span>
-                                    <span>+ ₹{formData.deliveryFee}</span>
+                                <div style={{ display: 'flex', flexDirection: 'column', marginBottom: '0.5rem', color: '#15803d', fontSize: '0.9rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span>Delivery Fare ({formData.distance} KM x 2 Way):</span>
+                                        <span>+ ₹{formData.deliveryFee}</span>
+                                    </div>
+                                    <small style={{ fontStyle: 'italic', color: '#166534', textAlign: 'right' }}>(Pay during delivery)</small>
                                 </div>
                             )}
 
@@ -1086,13 +1102,13 @@ const BookingForm = () => {
                             <p><strong>Time:</strong> {formData.startTime}</p>
                             <p><strong>Duration:</strong> {formData.duration} hours</p>
                             {formData.deliveryOption === 'home_delivery' && (
-                                <p style={{ color: '#15803d' }}><strong>Delivery:</strong> {formData.deliveryAddress} ({formData.distance} KM)</p>
+                                <p style={{ color: '#15803d' }}><strong>Delivery:</strong> {formData.deliveryAddress} ({formData.distance} KM One Way)</p>
                             )}
                             <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #fde68a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                                     <span style={{ color: '#92400e' }}>Advance Amount to Pay:</span>
                                     {formData.deliveryOption === 'home_delivery' && (
-                                        <small style={{ color: '#d97706' }}>(Includes Delivery Fee: ₹{formData.deliveryFee})</small>
+                                        <small style={{ color: '#d97706' }}>(Delivery Fee ₹{formData.deliveryFee} to be paid during handover)</small>
                                     )}
                                 </div>
                                 <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#d97706' }}>₹{advancePayment}</span>

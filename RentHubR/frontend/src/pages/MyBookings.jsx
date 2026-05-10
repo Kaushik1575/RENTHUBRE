@@ -32,6 +32,16 @@ const MyBookings = () => {
         ifsc: ''
     });
 
+    const [editingAddressId, setEditingAddressId] = useState(null);
+    const [newAddress, setNewAddress] = useState('');
+    const [newDistance, setNewDistance] = useState(0);
+    const [newFee, setNewFee] = useState(0);
+    const [newLat, setNewLat] = useState(null);
+    const [newLng, setNewLng] = useState(null);
+    const [trackingBooking, setTrackingBooking] = useState(null);
+    const SHOP_LOCATION = { lat: 21.4919493, lng: 86.9026929 };
+    const RATE_PER_KM = 10;
+
     // Force re-render every minute to update cancel button visibility
     const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -47,6 +57,52 @@ const MyBookings = () => {
 
         return () => clearInterval(interval);
     }, []);
+
+    // Initialize Google Places Autocomplete when editing address
+    useEffect(() => {
+        if (!editingAddressId || !window.google) return;
+
+        const timer = setTimeout(() => {
+            const input = document.getElementById(`edit-address-${editingAddressId}`);
+            if (!input) return;
+
+            const autocomplete = new window.google.maps.places.Autocomplete(input, {
+                componentRestrictions: { country: 'in' },
+                fields: ['address_components', 'geometry', 'formatted_address']
+            });
+
+            autocomplete.addListener('place_changed', () => {
+                const place = autocomplete.getPlace();
+                if (!place.geometry) return;
+
+                const userLoc = {
+                    lat: place.geometry.location.lat(),
+                    lng: place.geometry.location.lng()
+                };
+
+                setNewAddress(place.formatted_address);
+                setNewLat(userLoc.lat);
+                setNewLng(userLoc.lng);
+                
+                // Recalculate distance
+                const service = new window.google.maps.DistanceMatrixService();
+                service.getDistanceMatrix({
+                    origins: [new window.google.maps.LatLng(SHOP_LOCATION.lat, SHOP_LOCATION.lng)],
+                    destinations: [new window.google.maps.LatLng(userLoc.lat, userLoc.lng)],
+                    travelMode: window.google.maps.TravelMode.DRIVING,
+                }, (response, status) => {
+                    if (status === 'OK' && response.rows[0].elements[0].status === 'OK') {
+                        const distKm = response.rows[0].elements[0].distance.value / 1000;
+                        const fee = Math.round(distKm * RATE_PER_KM * 2); // Exact 2-way fee (10/km per way)
+                        setNewDistance(distKm);
+                        setNewFee(fee);
+                    }
+                });
+            });
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [editingAddressId]);
 
     const fetchUserBookings = async () => {
         try {
@@ -105,8 +161,9 @@ const MyBookings = () => {
 
                 // Calculate display amounts
                 const duration = parseInt(booking.duration) || 0;
-                const totalAmount = duration * vehiclePrice;
-                const advancePayment = booking.advance_payment ? parseFloat(booking.advance_payment) : Math.ceil(totalAmount * 0.3);
+                const vehicleRental = duration * vehiclePrice;
+                const totalAmount = booking.total_amount || (vehicleRental + (booking.delivery_fee || 0));
+                const advancePayment = booking.advance_payment ? parseFloat(booking.advance_payment) : Math.ceil(vehicleRental * 0.3);
                 const remainingAmount = totalAmount - advancePayment;
 
                 return {
@@ -328,6 +385,42 @@ const MyBookings = () => {
         }
     };
 
+    const handleUpdateAddress = async (bookingId) => {
+        if (!newAddress.trim()) {
+            setPopup({ isOpen: true, type: 'error', title: 'Invalid Address', message: 'Address cannot be empty.' });
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`/api/bookings/${bookingId}/address`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    deliveryAddress: newAddress,
+                    distance: newDistance,
+                    deliveryFee: newFee,
+                    lat: newLat,
+                    lng: newLng
+                })
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                setPopup({ isOpen: true, type: 'success', title: 'Updated', message: 'Delivery address and fee updated successfully!' });
+                setEditingAddressId(null);
+                fetchUserBookings(); // Refresh
+            } else {
+                throw new Error(data.error || 'Failed to update address');
+            }
+        } catch (err) {
+            setPopup({ isOpen: true, type: 'error', title: 'Update Failed', message: err.message });
+        }
+    };
+
     const submitRefundWithArgs = async (details) => {
         if (!currentBookingId) return;
 
@@ -392,98 +485,194 @@ const MyBookings = () => {
                     </p>
                 ) : (
                     bookings.map(booking => (
-                        <div key={booking.id} className="booking-card" style={{ background: '#fff', padding: '2rem', borderRadius: '10px', boxShadow: '0 2px 15px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-                            <h3 style={{ margin: 0, color: '#2ecc71', fontSize: '1.2rem', borderBottom: '1px solid #eee', paddingBottom: '0.5rem' }}>Booking ID: {booking.booking_id || `#${booking.id}`}</h3>
-                            <p><strong>Vehicle:</strong> {booking.vehicleName} ({booking.vehicle_type})</p>
-                            <p><strong>Start Date:</strong> {booking.displayStartDate}</p>
-                            <p><strong>End Date:</strong> {booking.displayEndDate}</p>
-                            <p><strong>Duration:</strong> {booking.duration || '0'} hours</p>
-                            <p><strong>Total Amount:</strong> ₹{booking.totalDisplayAmount || '0'}</p>
-                            <p><strong>Advance Payment:</strong> ₹{booking.displayAdvancePayment || '0'}</p>
-                            <p><strong>Remaining Amount:</strong> ₹{booking.remainingDisplayAmount >= 0 ? booking.remainingDisplayAmount : '0'}</p>
-                            <p><strong>Transaction ID:</strong> {booking.transaction_id || 'N/A'}</p>
-                            {/* Points display removed */}
-                            {booking.rewards && booking.rewards.coupon_code && (
-                                <p style={{ color: '#2e7d32', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                    <i className="fas fa-tag"></i>
-                                    <strong>Coupon Used:</strong> {booking.rewards.coupon_code}
-                                    {booking.rewards.reward_type === 'FREE_2_HOUR_RIDE' && <span style={{ fontSize: '0.8em', fontWeight: 'normal', color: '#666' }}>(Free 2 Hours)</span>}
-                                </p>
-                            )}
+                        <div key={booking.id} className="booking-card" style={{ background: '#fff', padding: '2rem', borderRadius: '10px', boxShadow: '0 2px 15px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: '550px' }}>
+                            <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                                <h3 style={{ margin: 0, color: '#2ecc71', fontSize: '1.2rem', borderBottom: '1px solid #eee', paddingBottom: '0.5rem' }}>Booking ID: {booking.booking_id || `#${booking.id}`}</h3>
+                                <p><strong>Vehicle:</strong> {booking.vehicleName} ({booking.vehicle_type})</p>
+                                <p><strong>Start Date:</strong> {booking.displayStartDate}</p>
+                                <p><strong>End Date:</strong> {booking.displayEndDate}</p>
+                                <p><strong>Duration:</strong> {booking.duration || '0'} hours</p>
+                                <p><strong>Total Amount:</strong> ₹{booking.totalDisplayAmount || '0'} {booking.delivery_option === 'home_delivery' ? '(Inc. 2-Way Delivery)' : ''}</p>
+                                <p><strong>Advance Payment:</strong> ₹{booking.displayAdvancePayment || '0'}</p>
+                                <p><strong>Remaining Amount:</strong> ₹{booking.remainingDisplayAmount >= 0 ? booking.remainingDisplayAmount : '0'} {booking.delivery_option === 'home_delivery' ? '(Inc. Delivery Fee)' : ''}</p>
+                                <p><strong>Transaction ID:</strong> {booking.transaction_id || 'N/A'}</p>
+                                
+                                {booking.delivery_option === 'home_delivery' && (
+                                    <div style={{ marginTop: '0.5rem', padding: '0.8rem', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #dcfce7', color: '#166534' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <p style={{ margin: 0 }}><strong><i className="fas fa-truck"></i> Delivery Address:</strong></p>
+                                            {editingAddressId !== booking.id && booking.status === 'confirmed' && (() => {
+                                                const start = new Date(`${booking.start_date}T${booking.start_time}`);
+                                                const diff = (start - currentTime) / (1000 * 60 * 60);
+                                                return diff > 2 ? (
+                                                    <button 
+                                                        onClick={() => { 
+                                                            setEditingAddressId(booking.id); 
+                                                            setNewAddress(booking.delivery_address);
+                                                            setNewDistance(booking.distance || 0);
+                                                            setNewFee(booking.delivery_fee || 0);
+                                                            setNewLat(booking.lat || null);
+                                                            setNewLng(booking.lng || null);
+                                                        }}
+                                                        style={{ background: 'none', border: 'none', color: '#1976d2', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', padding: 0 }}
+                                                    >
+                                                        Change
+                                                    </button>
+                                                ) : null;
+                                            })()}
+                                        </div>
 
-                            {/* Show booking confirmation time for refund calculation */}
-                            {(booking.confirmation_timestamp || booking.created_at) && (
-                                <p style={{ fontSize: '0.9rem', color: '#666', background: '#f8f9fa', padding: '0.5rem', borderRadius: '5px', border: '1px solid #e0e0e0' }}>
-                                    <strong>📅 Booked on:</strong> {new Date(booking.confirmation_timestamp || booking.created_at).toLocaleString('en-IN', {
-                                        dateStyle: 'medium',
-                                        timeStyle: 'short',
-                                        timeZone: 'Asia/Kolkata'
-                                    })}
-                                </p>
-                            )}
+                                        {editingAddressId === booking.id ? (
+                                            <div style={{ marginTop: '10px' }}>
+                                                <input 
+                                                    id={`edit-address-${booking.id}`}
+                                                    type="text"
+                                                    value={newAddress}
+                                                    onChange={(e) => setNewAddress(e.target.value)}
+                                                    style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #2ecc71', fontSize: '0.95rem', marginBottom: '8px', outline: 'none' }}
+                                                    placeholder="Start typing your address..."
+                                                />
 
-                            <span className={`booking-status status-${booking.status}`} style={{
-                                fontWeight: 'bold', padding: '0.5rem 1rem', borderRadius: '5px', display: 'inline-block', marginTop: '0.5rem', color: 'white', textAlign: 'center', width: 'fit-content',
-                                backgroundColor: booking.status === 'confirmed' ? '#4CAF50' :
-                                    booking.status === 'pending' ? '#ffa726' :
-                                        booking.status === 'cancelled' ? '#f44336' :
-                                            booking.status === 'completed' ? '#2196F3' : '#9e9e9e'
-                            }}>
-                                {booking.status ? booking.status.toUpperCase() : 'N/A'}
-                            </span>
+                                                {/* Map Preview */}
+                                                <div style={{ width: '100%', borderRadius: '12px', overflow: 'hidden', border: '1px solid #dcfce7', marginBottom: '10px', height: '200px' }}>
+                                                    {newLat && newLng ? (
+                                                        <iframe
+                                                            key={`${newLat}-${newLng}`}
+                                                            title="Delivery Preview"
+                                                            width="100%"
+                                                            height="100%"
+                                                            style={{ border: 0 }}
+                                                            loading="lazy"
+                                                            src={`https://www.google.com/maps/embed/v1/directions?key=AIzaSyDIIoFnrdbqEuukqUQ5XH4sNhD_9KncetAs&origin=${SHOP_LOCATION.lat},${SHOP_LOCATION.lng}&destination=${newLat},${newLng}&mode=driving&language=en`}
+                                                        />
+                                                    ) : (
+                                                        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fdf9', color: '#15803d', fontSize: '0.85rem' }}>
+                                                            <i className="fas fa-map-marker-alt" style={{ marginRight: '8px' }}></i> Enter address to see route
+                                                        </div>
+                                                    )}
+                                                </div>
 
-                            {(booking.status === 'confirmed' || booking.status === 'completed') && (
-                                <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}>
-                                    <button onClick={() => handleDownloadInvoice(booking.id)} style={{
-                                        backgroundColor: '#2196F3', color: 'white', border: 'none', padding: '0.8rem 1.2rem', borderRadius: '5px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem'
-                                    }}>
-                                        <span>📄</span> Download Invoice
-                                    </button>
+                                                {newFee > 0 && (
+                                                    <div style={{ margin: '10px 0', padding: '12px', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #dcfce7' }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '4px' }}>
+                                                            <span style={{ color: '#166534' }}>Vehicle Rental:</span>
+                                                            <span style={{ fontWeight: '600' }}>₹{booking.duration * (booking.vehiclePrice || 0)}</span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '8px' }}>
+                                                            <span style={{ color: '#166534' }}>New Delivery Fee (2-Way):</span>
+                                                            <span style={{ fontWeight: '600' }}>₹{newFee} ({newDistance.toFixed(1)} km)</span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', borderTop: '1px solid #dcfce7', paddingTop: '8px' }}>
+                                                            <strong style={{ color: '#166534' }}>Updated Total:</strong>
+                                                            <strong style={{ color: '#166534' }}>₹{(booking.duration * (booking.vehiclePrice || 0)) + newFee}</strong>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                    <button onClick={() => handleUpdateAddress(booking.id)} style={{ padding: '8px 18px', background: '#166534', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>Save Changes</button>
+                                                    <button onClick={() => { setEditingAddressId(null); setNewFee(0); }} style={{ padding: '8px 18px', background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>Cancel</button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <p style={{ margin: '5px 0 0 0', fontSize: '0.95rem' }}>{booking.delivery_address}</p>
+                                        )}
 
-                                    {booking.status === 'confirmed' && (() => {
-                                        // Only show cancel button if start time hasn't passed
-                                        if (booking.start_date && booking.start_time) {
-                                            const startDateTime = new Date(`${booking.start_date}T${booking.start_time}`);
-                                            // Use currentTime state to ensure real-time updates without page refresh
-                                            const now = currentTime;
+                                        <p style={{ margin: '8px 0 0 0', fontSize: '0.75rem', color: '#15803d', borderTop: '1px solid #dcfce7', paddingTop: '5px' }}>
+                                            <i className="fas fa-info-circle"></i> Address can be updated up to 2 hours before pickup.
+                                        </p>
 
-                                            // Hide cancel button if start time has passed
-                                            if (now >= startDateTime) {
-                                                return null;
-                                            }
-                                        }
-
-                                        return (
-                                            <button className="btn-cancel-booking" onClick={() => handleCancelClick(booking.id)} style={{
-                                                backgroundColor: '#f44336', color: 'white', border: 'none', padding: '0.8rem 1.2rem', borderRadius: '5px', cursor: 'pointer'
-                                            }}>
-                                                <i className="fas fa-times"></i> Cancel Booking
+                                        {/* --- LIVE TRACKING BUTTON --- */}
+                                        {booking.agent_id && ['picked_up', 'out_for_delivery'].includes(booking.delivery_status) && (
+                                            <button 
+                                                onClick={() => setTrackingBooking(booking)}
+                                                style={{ marginTop: '10px', width: '100%', padding: '10px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                                            >
+                                                <i className="fas fa-location-arrow"></i> Track Your Vehicle Live
                                             </button>
-                                        );
-                                    })()}
-                                </div>
-                            )}
+                                        )}
+                                    </div>
+                                )}
 
-                            {booking.status === 'cancelled' && booking.refund_amount && (
-                                <div className="refund-info" style={{ marginTop: '0.5rem', color: '#4CAF50', fontWeight: 'bold', padding: '0.5rem', backgroundColor: '#e8f5e9', borderRadius: '5px', fontSize: '0.9rem' }}>
-                                    <p><strong>Refund Amount:</strong> ₹{booking.refund_amount}</p>
-                                    <p><strong>Refund Status:</strong> {booking.refund_status || 'Processing'}</p>
-                                </div>
-                            )}
+                                {booking.rewards && booking.rewards.coupon_code && (
+                                    <p style={{ color: '#2e7d32', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '5px' }}>
+                                        <i className="fas fa-tag"></i>
+                                        <strong>Coupon Used:</strong> {booking.rewards.coupon_code}
+                                        {booking.rewards.reward_type === 'FREE_2_HOUR_RIDE' && <span style={{ fontSize: '0.8em', fontWeight: 'normal', color: '#666' }}>(Free 2 Hours)</span>}
+                                    </p>
+                                )}
+                            </div>
 
-                            {booking.status === 'rejected' && (
-                                <div className="refund-info" style={{ marginTop: '0.5rem', color: '#4CAF50', fontWeight: 'bold', padding: '0.5rem', backgroundColor: '#e8f5e9', borderRadius: '5px', fontSize: '0.9rem' }}>
-                                    <p><strong>Refund Amount:</strong> ₹{booking.refund_amount || booking.displayAdvancePayment || '0'}</p>
-                                    <p><strong>Refund Status:</strong> {booking.refund_status || 'Completed'}</p>
-                                    {booking.refund_details?.original_tx && (
-                                        <p style={{ fontSize: '0.85em', color: '#666' }}>Ref Tx: {booking.refund_details.original_tx}</p>
-                                    )}
+                            <div style={{ borderTop: '1px solid #eee', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                {(booking.confirmation_timestamp || booking.created_at) && (
+                                    <div style={{ fontSize: '0.85rem', color: '#666', background: '#f8f9fa', padding: '0.6rem', borderRadius: '8px', border: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <i className="far fa-clock" style={{ color: '#2ecc71' }}></i>
+                                        <span><strong>Booked on:</strong> {new Date(booking.confirmation_timestamp || booking.created_at).toLocaleString('en-IN', {
+                                            dateStyle: 'medium',
+                                            timeStyle: 'short',
+                                            timeZone: 'Asia/Kolkata'
+                                        })}</span>
+                                    </div>
+                                )}
+
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span className={`booking-status status-${booking.status}`} style={{
+                                        fontWeight: 'bold', padding: '0.5rem 1.2rem', borderRadius: '50px', fontSize: '0.85rem', color: 'white', textTransform: 'uppercase',
+                                        backgroundColor: booking.status === 'confirmed' ? '#4CAF50' :
+                                            booking.status === 'pending' ? '#ffa726' :
+                                                booking.status === 'cancelled' ? '#f44336' :
+                                                    booking.status === 'completed' ? '#2196F3' : '#9e9e9e'
+                                    }}>
+                                        {booking.status || 'N/A'}
+                                    </span>
                                 </div>
-                            )}
+
+                                {(booking.status === 'confirmed' || booking.status === 'completed' || booking.status === 'ride_started' || booking.status === 'ride_completed') && (
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <button onClick={() => handleDownloadInvoice(booking.id)} style={{
+                                            backgroundColor: '#2196F3', color: 'white', border: 'none', padding: '0.8rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', flex: 1, fontWeight: '600'
+                                        }}>
+                                            <i className="fas fa-file-invoice"></i> Invoice
+                                        </button>
+
+                                        {booking.status === 'confirmed' && (() => {
+                                            if (booking.start_date && booking.start_time) {
+                                                const startDateTime = new Date(`${booking.start_date}T${booking.start_time}`);
+                                                if (currentTime >= startDateTime) return null;
+                                            }
+                                            return (
+                                                <button className="btn-cancel-booking" onClick={() => handleCancelClick(booking.id)} style={{
+                                                    backgroundColor: '#f44336', color: 'white', border: 'none', padding: '0.8rem', borderRadius: '8px', cursor: 'pointer', flex: 1, fontWeight: '600'
+                                                }}>
+                                                    <i className="fas fa-times"></i> Cancel
+                                                </button>
+                                            );
+                                        })()}
+                                    </div>
+                                )}
+
+                                {booking.status === 'cancelled' && booking.refund_amount && (
+                                    <div className="refund-info" style={{ marginTop: '0.5rem', color: '#4CAF50', fontWeight: 'bold', padding: '0.8rem', backgroundColor: '#e8f5e9', borderRadius: '8px', fontSize: '0.9rem', border: '1px solid #c8e6c9' }}>
+                                        <p style={{ margin: '0 0 5px 0' }}><strong>Refund Amount:</strong> ₹{booking.refund_amount}</p>
+                                        <p style={{ margin: 0 }}><strong>Refund Status:</strong> {booking.refund_status || 'Processing'}</p>
+                                    </div>
+                                )}
+
+                                {booking.status === 'rejected' && (
+                                    <div className="refund-info" style={{ marginTop: '0.5rem', color: '#4CAF50', fontWeight: 'bold', padding: '0.8rem', backgroundColor: '#e8f5e9', borderRadius: '8px', fontSize: '0.9rem', border: '1px solid #c8e6c9' }}>
+                                        <p style={{ margin: '0 0 5px 0' }}><strong>Refund Amount:</strong> ₹{booking.refund_amount || booking.displayAdvancePayment || '0'}</p>
+                                        <p style={{ margin: '0 0 5px 0' }}><strong>Refund Status:</strong> {booking.refund_status || 'Completed'}</p>
+                                        {booking.refund_details?.original_tx && (
+                                            <p style={{ fontSize: '0.85em', color: '#666', margin: 0 }}>Ref Tx: {booking.refund_details.original_tx}</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     ))
                 )}
             </section>
+
+
 
             {/* Cancellation Modal using ConfirmationPopup */}
             <ConfirmationPopup
@@ -595,6 +784,40 @@ const MyBookings = () => {
                 title={popup.isOpen ? popup.title : 'Success!'}
                 message={popup.isOpen ? popup.message : successMessage}
             />
+            {/* LIVE TRACKING MODAL */}
+            {trackingBooking && (
+                <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                    <div style={{ background: 'white', width: '100%', maxWidth: '600px', borderRadius: '20px', overflow: 'hidden', position: 'relative' }}>
+                        <button onClick={() => setTrackingBooking(null)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'white', border: 'none', borderRadius: '50%', width: '35px', height: '35px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.2)', zIndex: 10, fontWeight: 'bold' }}>✕</button>
+                        
+                        <div style={{ padding: '20px', background: '#2563eb', color: 'white' }}>
+                            <h3 style={{ margin: 0 }}>Tracking Your Delivery</h3>
+                            <p style={{ margin: '5px 0 0 0', fontSize: '0.85rem', opacity: 0.9 }}>Agent is on the way to your location</p>
+                        </div>
+
+                        <div style={{ height: '400px', background: '#eee' }}>
+                            <iframe
+                                title="Live Tracking"
+                                width="100%"
+                                height="100%"
+                                style={{ border: 0 }}
+                                src={`https://www.google.com/maps/embed/v1/directions?key=AIzaSyDIIoFnrdbqEuukqUQ5XH4sNhD_9KncetA&origin=${trackingBooking.agent_lat || SHOP_LOCATION.lat},${trackingBooking.agent_lng || SHOP_LOCATION.lng}&destination=${trackingBooking.lat || trackingBooking.delivery_address}&mode=driving&language=en`}
+                            />
+                        </div>
+
+                        <div style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                                <div style={{ fontSize: '0.75rem', color: '#666' }}>ESTIMATED ARRIVAL</div>
+                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#2563eb' }}>Calculating...</div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: '0.75rem', color: '#666' }}>DELIVERY AGENT</div>
+                                <div style={{ fontSize: '1rem', fontWeight: 700 }}>Assigned Expert</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </main>
     );
 };
