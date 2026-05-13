@@ -25,6 +25,17 @@ app.post('/api/register/send-otp', async (req, res) => {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   
   try {
+    // Check if agent already exists
+    const { data: existingAgent } = await supabase
+      .from('delivery_agents')
+      .select('id')
+      .eq('email', email)
+      .single();
+
+    if (existingAgent) {
+      return res.status(400).json({ error: 'This email is already registered as a Delivery Agent.' });
+    }
+
     console.log(`📧 Attempting to send OTP to: ${email}`);
     otpStore.set(`email_${email}`, { otp, expires: Date.now() + 600000 });
     
@@ -62,6 +73,17 @@ app.post('/api/register/send-mobile-otp', async (req, res) => {
       phoneNumber = `+91${phoneNumber}`;
     } else if (!phoneNumber.startsWith('+')) {
       phoneNumber = `+${phoneNumber}`;
+    }
+
+    // Check if agent already exists with this mobile
+    const { data: existingAgent } = await supabase
+      .from('delivery_agents')
+      .select('id')
+      .eq('mobile', phoneNumber)
+      .single();
+
+    if (existingAgent) {
+      return res.status(400).json({ error: 'This mobile number is already registered as a Delivery Agent.' });
     }
 
     console.log(`📱 Sending OTP to: ${phoneNumber}`);

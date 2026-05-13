@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { Scanner } from '@yudiel/react-qr-scanner';
 
 const Dashboard = () => {
   const [agent, setAgent] = useState(null);
@@ -15,6 +16,7 @@ const Dashboard = () => {
   const [tasks, setTasks] = useState([]);
   const [actionLoading, setActionLoading] = useState(null); // Track which task is being updated
   const [stats, setStats] = useState({ todayDeliveries: 0, earnings: 0, activeTasks: 0, pendingTasks: 0 });
+  const [scanModal, setScanModal] = useState({ isOpen: false, taskId: null, type: null }); // type: 'start' or 'end'
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -165,6 +167,50 @@ const Dashboard = () => {
       fetchTasks(agent.id);
     } catch (error) {
       alert('Failed to update task status');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleScanSuccess = async (result) => {
+    if (!result) return;
+    const bookingId = typeof result === 'string' ? result : result[0].rawValue;
+    const { taskId, type } = scanModal;
+
+    console.log(`🔍 Scanned ID: ${bookingId} | Task ID: ${taskId}`);
+
+    // Simple verification: Scanned ID should match Booking ID (or long ID)
+    // In your system, the QR usually contains the Booking ID
+    
+    try {
+      setScanModal({ isOpen: false, taskId: null, type: null });
+      setActionLoading(taskId);
+
+      // Call the main backend scan-qr API to ensure all logic (payments, etc.) is handled
+      const response = await fetch(`${import.meta.env.VITE_API_URL.replace('/api', '')}/api/admin/scan-qr`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: bookingId.trim() })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert(data.message || 'Verification Successful!');
+        
+        // If it was a return (end), set agent to RETURNING state
+        if (type === 'end') {
+          await supabase.from('delivery_agents').update({ current_status: 'RETURNING' }).eq('id', agent.id);
+          setAgent(prev => ({ ...prev, current_status: 'RETURNING' }));
+        }
+        
+        fetchTasks(agent.id);
+      } else {
+        alert('Verification Failed: ' + (data.error || 'Invalid QR Code'));
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Error during verification');
     } finally {
       setActionLoading(null);
     }
@@ -402,34 +448,24 @@ const Dashboard = () => {
                         )}
                         {task.delivery_status === 'picked_up' && (
                           <button 
-                            onClick={() => updateTaskStatus(task.id, 'out_for_delivery')} 
+                            onClick={() => setScanModal({ isOpen: true, taskId: task.id, type: 'start' })} 
                             className="primary" 
                             disabled={actionLoading === task.id}
-                            style={{ padding: '8px 16px', fontSize: '0.8rem', background: '#10b981', opacity: actionLoading === task.id ? 0.7 : 1 }}
+                            style={{ padding: '8px 16px', fontSize: '0.8rem', background: '#f59e0b', opacity: actionLoading === task.id ? 0.7 : 1 }}
                           >
-                            {actionLoading === task.id ? 'Processing...' : 'Start Ride'}
+                            <Truck size={14} style={{ marginRight: '5px' }} />
+                            {actionLoading === task.id ? 'Processing...' : 'Scan to Start Ride'}
                           </button>
                         )}
                         {task.delivery_status === 'out_for_delivery' && (
                           <button 
-                            onClick={async () => {
-                              try {
-                                setActionLoading(task.id);
-                                await updateTaskStatus(task.id, 'delivered');
-                                // After delivery, set agent to RETURNING state
-                                await supabase.from('delivery_agents').update({ current_status: 'RETURNING' }).eq('id', agent.id);
-                                setAgent(prev => ({ ...prev, current_status: 'RETURNING' }));
-                              } catch (e) {
-                                console.error(e);
-                              } finally {
-                                setActionLoading(null);
-                              }
-                            }} 
+                            onClick={() => setScanModal({ isOpen: true, taskId: task.id, type: 'end' })} 
                             className="primary" 
                             disabled={actionLoading === task.id}
-                            style={{ padding: '8px 16px', fontSize: '0.8rem', background: 'var(--success)', opacity: actionLoading === task.id ? 0.7 : 1 }}
+                            style={{ padding: '8px 16px', fontSize: '0.8rem', background: '#10b981', opacity: actionLoading === task.id ? 0.7 : 1 }}
                           >
-                            {actionLoading === task.id ? 'Processing...' : 'Mark Delivered'}
+                            <CheckCircle2 size={14} style={{ marginRight: '5px' }} />
+                            {actionLoading === task.id ? 'Processing...' : 'Scan to End Ride'}
                           </button>
                         )}
                       </div>
@@ -494,6 +530,36 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* QR SCAN MODAL */}
+      {scanModal.isOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, padding: '20px'
+        }}>
+          <div className="glass-card" style={{ width: '100%', maxWidth: '400px', padding: '25px', position: 'relative', background: 'white' }}>
+            <button 
+              onClick={() => setScanModal({ isOpen: false, taskId: null, type: null })}
+              style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}
+            >
+              &times;
+            </button>
+            <h3 style={{ marginTop: 0, marginBottom: '20px', textAlign: 'center', color: 'var(--text-primary)' }}>
+              {scanModal.type === 'start' ? 'Verify Delivery' : 'Confirm Collection'}
+            </h3>
+            <div style={{ borderRadius: '15px', overflow: 'hidden', border: '4px solid var(--accent)', marginBottom: '20px' }}>
+              <Scanner 
+                onScan={handleScanSuccess}
+                onError={(err) => console.error(err)}
+              />
+            </div>
+            <p style={{ textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+              Please scan the QR code displayed on the customer's device to {scanModal.type === 'start' ? 'start' : 'end'} the ride.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
