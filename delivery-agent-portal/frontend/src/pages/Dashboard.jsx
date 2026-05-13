@@ -395,23 +395,78 @@ const Dashboard = () => {
                         <span className={`status-badge`} style={{ 
                           padding: '4px 12px', 
                           borderRadius: '50px', 
-                          fontSize: '0.75rem', 
-                          fontWeight: 700,
-                          background: task.delivery_status === 'assigned' ? '#e0e7ff' : (task.delivery_status === 'pending' ? '#fef3c7' : '#dcfce7'),
-                          color: task.delivery_status === 'assigned' ? '#4338ca' : (task.delivery_status === 'pending' ? '#d97706' : '#10b981')
-                        }}>
-                          {task.delivery_status === 'assigned' ? 'NEW ASSIGNMENT' : (task.delivery_status?.toUpperCase() || 'PENDING')}
-                        </span>
+                  <div key={task.id} className="glass-card" style={{ padding: '25px', marginBottom: '25px', borderLeft: '5px solid var(--accent)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                      <div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px' }}>Booking ID</div>
+                        <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>{task.booking_id}</h3>
+                      </div>
+                      <span style={{ 
+                        padding: '6px 12px', background: '#e3f2fd', color: '#1976d2', 
+                        borderRadius: '20px', fontSize: '0.75rem', fontWeight: 'bold' 
+                      }}>
+                        {task.delivery_status?.toUpperCase().replace('_', ' ')}
+                      </span>
+                    </div>
+
+                    {/* NEW FULL-SERVICE SCHEDULE UI */}
+                    <div style={{ background: '#f0f9ff', borderRadius: '12px', padding: '15px', border: '1px solid #bae6fd', marginBottom: '20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0369a1', fontWeight: 'bold', marginBottom: '15px', fontSize: '0.95rem' }}>
+                        <Clock size={18} />
+                        Full-Service Dispatch Schedule
+                      </div>
+
+                      {/* Part 1: Delivery */}
+                      <div style={{ marginBottom: '15px', paddingBottom: '15px', borderBottom: '1px dashed #bae6fd' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0c4a6e', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '8px' }}>
+                          <Truck size={16} />
+                          Part 1: Delivery (Drop-off)
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <LogOut size={14} color="#666" />
+                            <span>Leave Shop: <strong>{new Date(task.est_departure_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <Store size={14} color="#666" />
+                            <span>Back at Shop: <strong>{new Date(task.est_return_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Part 2: Collection */}
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0c4a6e', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '8px' }}>
+                          <RotateCcw size={16} />
+                          Part 2: Collection (Return Pickup)
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <LogOut size={14} color="#666" />
+                            <span>Leave Shop: <strong>{new Date(task.pickup_est_departure).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <Store size={14} color="#666" />
+                            <span>Back at Shop: <strong>{new Date(task.pickup_est_return).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></span>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex gap-4 mb-4">
-                      <div style={{ background: '#f8fafc', padding: '10px', borderRadius: '12px' }}>
-                        <MapPin size={20} color="var(--accent)" />
+                    <div className="task-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+                      <div className="task-info-item">
+                        <MapPin size={16} />
+                        <div>
+                          <div className="label">Delivery Address</div>
+                          <div className="value" style={{ fontSize: '0.85rem' }}>{task.delivery_address}</div>
+                        </div>
                       </div>
-                      <div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Delivery Address</div>
-                        <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{task.delivery_address}</div>
+                      <div className="task-info-item">
+                        <Calendar size={16} />
+                        <div>
+                          <div className="label">Scheduled Time</div>
+                          <div className="value" style={{ fontSize: '0.85rem' }}>{new Date(task.start_date).toLocaleDateString()} at {task.start_time}</div>
+                        </div>
                       </div>
                     </div>
 
