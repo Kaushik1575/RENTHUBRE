@@ -4,6 +4,7 @@ const dayjs = require('dayjs');
 const { sendEmail } = require('../config/emailService');
 const supabase = require('../config/supabase');
 const { generateInvoiceBuffer } = require('../utils/invoiceGenerator');
+const { sendSMS } = require('./twilioService');
 
 // POST /api/confirmBooking
 router.post('/confirmBooking', async (req, res) => {
@@ -83,6 +84,12 @@ router.post('/confirmBooking', async (req, res) => {
         };
 
         await sendEmail(mailOptions);
+
+        // --- NEW: TWILIO SMS NOTIFICATION ---
+        if (body.userPhone) {
+            const smsMessage = `Hi ${userName}, your RentHubR booking ${bookingId} for ${vehicleName} is confirmed! Enjoy your ride! 🚗`;
+            await sendSMS(body.userPhone, smsMessage);
+        }
 
         // Optionally store a copy or update Supabase booking record (if booking id exists)
         try {
