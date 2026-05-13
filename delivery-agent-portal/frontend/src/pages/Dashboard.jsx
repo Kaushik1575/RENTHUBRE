@@ -385,21 +385,11 @@ const Dashboard = () => {
             {tasks.length > 0 ? (
               <div className="tasks-list" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {tasks.map(task => (
-                  <div key={task.id} className="task-item glass-card" style={{ padding: '20px', border: '1px solid #e2e8f0' }}>
-                    <div className="flex between mb-4">
-                      <div>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Booking ID</span>
-                        <div style={{ fontWeight: 800 }}>{task.booking_id || `#${task.id}`}</div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <span className={`status-badge`} style={{ 
-                          padding: '4px 12px', 
-                          borderRadius: '50px', 
-                  <div key={task.id} className="glass-card" style={{ padding: '25px', marginBottom: '25px', borderLeft: '5px solid var(--accent)' }}>
+                  <div key={task.id} className="glass-card" style={{ padding: '25px', marginBottom: '25px', borderLeft: '5px solid var(--accent)', position: 'relative' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
                       <div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px' }}>Booking ID</div>
-                        <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>{task.booking_id}</h3>
+                        <h3 style={{ margin: 0, color: 'var(--text-primary)', fontWeight: 800 }}>{task.booking_id}</h3>
                       </div>
                       <span style={{ 
                         padding: '6px 12px', background: '#e3f2fd', color: '#1976d2', 
