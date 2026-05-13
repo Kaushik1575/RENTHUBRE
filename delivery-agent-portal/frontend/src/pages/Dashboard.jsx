@@ -45,7 +45,7 @@ const Dashboard = () => {
             .eq('id', agent.id);
         },
         (error) => console.error('Tracking Error:', error),
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 2000 }
       );
     }
 
