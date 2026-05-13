@@ -6,7 +6,7 @@
     "rewrites": [
         {
             "source": "/api/:match*",
-            "destination": "https://renthubr.onrender.com/api/:match*"
+            "destination": "https://renthubre.onrender.com/api/:match*"
         },
         {
             "source": "/(.*)",
