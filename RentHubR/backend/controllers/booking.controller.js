@@ -558,8 +558,10 @@ const createBooking = async (req, res) => {
                     const { sendSMS } = require('../services/twilioService');
                     await sendEmail(mailOptions);
 
-                    // --- NEW: TWILIO SMS NOTIFICATION (PROFESSIONAL FORMAT) ---
-                    if (userDetails.phone_number) {
+                    // --- NEW: TWILIO SMS NOTIFICATION (SMART FIELD CHECK) ---
+                    const targetPhone = userDetails.phoneNumber || userDetails.phone_number || userDetails.mobile;
+                    
+                    if (targetPhone) {
                         const smsMessage = 
 `RentHubR - CONFIRMED! ✅
 Booking: ${data.booking_id}
@@ -567,7 +569,7 @@ Vehicle: ${vehicleName}
 Pickup: ${startDate} at ${formattedStartTime}
 Check your email for the invoice.
 Happy Riding! 🚗`;
-                        await sendSMS(userDetails.phone_number, smsMessage);
+                        await sendSMS(targetPhone, smsMessage);
                     }
 
                     console.log(`📧 Rich confirmation email with PDF sent to ${userDetails.email}`);
