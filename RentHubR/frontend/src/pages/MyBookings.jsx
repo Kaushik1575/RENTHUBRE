@@ -600,8 +600,47 @@ const MyBookings = () => {
                                         </div>
 
                                         {/* --- LIVE TRACKING BUTTON --- */}
-                                                <i className="fas fa-location-arrow"></i> Track Your Vehicle Live
-                                            </button>
+                                        {(booking.delivery_status === 'accepted' || 
+                                          booking.delivery_status === 'picked_up' || 
+                                          booking.delivery_status === 'out_for_delivery' ||
+                                          booking.delivery_status === 'returning') && (
+                                            <div style={{ marginTop: '15px' }}>
+                                                <button 
+                                                    onClick={() => window.open(`/live-tracking?bookingId=${booking.id}`, '_blank')}
+                                                    style={{ 
+                                                        width: '100%', 
+                                                        padding: '12px', 
+                                                        background: '#000', 
+                                                        color: 'white', 
+                                                        border: 'none', 
+                                                        borderRadius: '8px', 
+                                                        cursor: 'pointer', 
+                                                        fontWeight: 'bold',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        gap: '10px',
+                                                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                                                    }}
+                                                >
+                                                    <span style={{ 
+                                                        width: '10px', 
+                                                        height: '10px', 
+                                                        background: '#ff0000', 
+                                                        borderRadius: '50%', 
+                                                        boxShadow: '0 0 0 rgba(255, 0, 0, 0.4)',
+                                                        animation: 'pulse 1.5s infinite'
+                                                    }}></span>
+                                                    <i className="fas fa-location-arrow"></i> 📍 LIVE TRACK AGENT
+                                                </button>
+                                                <style>{`
+                                                    @keyframes pulse {
+                                                        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); }
+                                                        70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(255, 0, 0, 0); }
+                                                        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+                                                    }
+                                                `}</style>
+                                            </div>
                                         )}
                                     </div>
                                 )}
