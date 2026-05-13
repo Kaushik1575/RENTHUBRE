@@ -198,9 +198,30 @@ const Dashboard = () => {
       if (response.ok) {
         alert(data.message || 'Verification Successful!');
         
+        // --- AUTO-ACTIVATE GPS TRACKING ON SCAN ---
+        if (type === 'start') {
+          // Force Online status to start GPS watcher
+          await supabase.from('delivery_agents')
+            .update({ 
+              availability_status: 'Online',
+              current_status: 'ON_DELIVERY' 
+            })
+            .eq('id', agent.id);
+          
+          setIsOnline(true);
+          setAgent(prev => ({ ...prev, current_status: 'ON_DELIVERY' }));
+        }
+
         // If it was a return (end), set agent to RETURNING state
         if (type === 'end') {
-          await supabase.from('delivery_agents').update({ current_status: 'RETURNING' }).eq('id', agent.id);
+          await supabase.from('delivery_agents')
+            .update({ 
+              availability_status: 'Online', // Keep online to track return trip
+              current_status: 'RETURNING' 
+            })
+            .eq('id', agent.id);
+          
+          setIsOnline(true);
           setAgent(prev => ({ ...prev, current_status: 'RETURNING' }));
         }
         
