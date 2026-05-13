@@ -73,6 +73,9 @@ const AdminPanel = () => {
         if (activeTab === 'bookings') {
             loadBookings();
             loadDeliveryAgents();
+            // Refresh agents every 15s while on bookings tab
+            const interval = setInterval(loadDeliveryAgents, 15000);
+            return () => clearInterval(interval);
         }
         if (activeTab === 'vehicles') loadVehicles();
         if (activeTab === 'requests') loadRequests(); // Load requests
@@ -1622,8 +1625,8 @@ ${isRefund ? `Refund: ₹${Math.abs(balance)}` : `Balance: ₹${balance}`}
                                     <div style={{ textAlign: 'right' }}>
                                         <span style={{ 
                                             padding: '4px 8px', borderRadius: '20px', fontSize: '0.7rem', fontWeight: '700',
-                                            background: (deliveryAgents.find(a => a.id === modal.data.agent_id)?.status === 'online' || deliveryAgents.find(a => a.id === modal.data.agent_id)?.status === 'on_delivery') ? '#dcfce7' : '#f1f5f9',
-                                            color: (deliveryAgents.find(a => a.id === modal.data.agent_id)?.status === 'online' || deliveryAgents.find(a => a.id === modal.data.agent_id)?.status === 'on_delivery') ? '#166534' : '#64748b'
+                                            background: (['online', 'on_delivery'].includes((deliveryAgents.find(a => a.id === modal.data.agent_id)?.status || '').toLowerCase())) ? '#dcfce7' : '#f1f5f9',
+                                            color: (['online', 'on_delivery'].includes((deliveryAgents.find(a => a.id === modal.data.agent_id)?.status || '').toLowerCase())) ? '#166534' : '#64748b'
                                         }}>
                                             {(deliveryAgents.find(a => a.id === modal.data.agent_id)?.status || 'offline').toUpperCase()}
                                         </span>
