@@ -600,11 +600,6 @@ const MyBookings = () => {
                                         </div>
 
                                         {/* --- LIVE TRACKING BUTTON --- */}
-                                        {booking.agent_id && ['picked_up', 'out_for_delivery'].includes(booking.delivery_status) && (
-                                            <button 
-                                                onClick={() => setTrackingBooking(booking)}
-                                                style={{ marginTop: '10px', width: '100%', padding: '10px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                                            >
                                                 <i className="fas fa-location-arrow"></i> Track Your Vehicle Live
                                             </button>
                                         )}
