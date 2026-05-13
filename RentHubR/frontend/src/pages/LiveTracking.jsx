@@ -135,15 +135,31 @@ const LiveTracking = () => {
         }
     }, [booking, mapInstance]);
 
+    const calculateHeading = (start, end) => {
+        if (!start || !end) return 0;
+        const lat1 = start.lat() * (Math.PI / 180);
+        const lon1 = start.lng() * (Math.PI / 180);
+        const lat2 = end.lat * (Math.PI / 180);
+        const lon2 = end.lng * (Math.PI / 180);
+
+        const y = Math.sin(lon2 - lon1) * Math.cos(lat2);
+        const x = Math.cos(lat1) * Math.sin(lat2) -
+                  Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1);
+        
+        let brng = Math.atan2(y, x) * (180 / Math.PI);
+        return (brng + 360) % 360;
+    };
+
     const animateMarker = (newPos) => {
         if (!markerRef.current) {
             markerRef.current = new window.google.maps.Marker({
                 position: newPos,
                 map: mapInstance,
                 icon: {
-                    url: 'https://cdn-icons-png.flaticon.com/512/744/744465.png', // Delivery Scooter/Car
+                    url: 'https://cdn-icons-png.flaticon.com/512/744/744465.png', 
                     scaledSize: new window.google.maps.Size(45, 45),
-                    anchor: new window.google.maps.Point(22, 22)
+                    anchor: new window.google.maps.Point(22, 22),
+                    rotation: 0
                 },
                 zIndex: 1000
             });
@@ -151,6 +167,13 @@ const LiveTracking = () => {
         }
 
         const startPos = markerRef.current.getPosition();
+        const heading = calculateHeading(startPos, newPos);
+        
+        // Update rotation instantly
+        const icon = markerRef.current.getIcon();
+        icon.rotation = heading;
+        markerRef.current.setIcon(icon);
+
         const frames = 60;
         let frame = 0;
 
