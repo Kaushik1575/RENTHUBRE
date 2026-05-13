@@ -71,9 +71,9 @@ const LiveTracking = () => {
                 map: map,
                 suppressMarkers: true,
                 polylineOptions: {
-                    strokeColor: '#000',
-                    strokeWeight: 5,
-                    strokeOpacity: 0.8
+                    strokeColor: '#2563eb', // Uber/Ola Blue
+                    strokeWeight: 6,
+                    strokeOpacity: 0.9
                 }
             });
 
@@ -208,6 +208,7 @@ const LiveTracking = () => {
             destination,
             travelMode: 'DRIVING'
         }, (result, status) => {
+            console.log('🗺️ Directions API Status:', status);
             if (status === 'OK') {
                 directionsRendererRef.current.setDirections(result);
                 const leg = result.routes[0].legs[0];
@@ -215,6 +216,8 @@ const LiveTracking = () => {
                     duration: leg.duration.text,
                     distance: leg.distance.text
                 });
+            } else {
+                console.error('❌ Directions Request Failed:', status);
             }
         });
     };

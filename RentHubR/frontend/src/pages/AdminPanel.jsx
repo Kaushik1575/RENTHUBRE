@@ -1598,6 +1598,36 @@ ${isRefund ? `Refund: ₹${Math.abs(balance)}` : `Balance: ₹${balance}`}
                                 <p><strong>Transaction ID:</strong> {modal.data.transaction_id}</p>
                             )}
 
+                            {/* ASSIGNED AGENT INFO (MODERN BOX) */}
+                            {modal.data.agent_id && (
+                                <div style={{ 
+                                    margin: '15px 0', padding: '15px', background: '#f8fafc', 
+                                    borderRadius: '12px', border: '1px solid #e2e8f0',
+                                    display: 'flex', alignItems: 'center', gap: '12px'
+                                }}>
+                                    <div style={{ width: '45px', height: '45px', background: '#3b82f6', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <i className="fas fa-user-tie"></i>
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <p style={{ margin: 0, fontWeight: '700', color: '#1e293b' }}>
+                                            {deliveryAgents.find(a => a.id === modal.data.agent_id)?.full_name || 'Assigned Agent'}
+                                        </p>
+                                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
+                                            <i className="fas fa-phone-alt"></i> {deliveryAgents.find(a => a.id === modal.data.agent_id)?.mobile || 'N/A'}
+                                        </p>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <span style={{ 
+                                            padding: '4px 8px', borderRadius: '20px', fontSize: '0.7rem', fontWeight: '700',
+                                            background: (deliveryAgents.find(a => a.id === modal.data.agent_id)?.status === 'online' || deliveryAgents.find(a => a.id === modal.data.agent_id)?.status === 'on_delivery') ? '#dcfce7' : '#f1f5f9',
+                                            color: (deliveryAgents.find(a => a.id === modal.data.agent_id)?.status === 'online' || deliveryAgents.find(a => a.id === modal.data.agent_id)?.status === 'on_delivery') ? '#166534' : '#64748b'
+                                        }}>
+                                            {(deliveryAgents.find(a => a.id === modal.data.agent_id)?.status || 'offline').toUpperCase()}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
                             {modal.data.delivery_option === 'home_delivery' && (
                                 <div style={{ background: '#f0f9ff', padding: '15px', borderRadius: '8px', border: '1px solid #bae6fd', marginTop: '15px' }}>
                                     <h4 style={{ margin: '0 0 10px 0', color: '#0369a1', fontSize: '1rem' }}>
