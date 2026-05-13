@@ -175,8 +175,8 @@ const LiveTracking = () => {
         if (!mapInstance || !origin || !window.google) return;
 
         const destination = { 
-            lat: parseFloat(booking.lat) || 21.4433, 
-            lng: parseFloat(booking.lng) || 87.0234 
+            lat: parseFloat(booking.lat) || 21.492298, 
+            lng: parseFloat(booking.lng) || 86.902777 
         };
 
         const service = new window.google.maps.DirectionsService();
