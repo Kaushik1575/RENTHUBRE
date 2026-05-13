@@ -106,7 +106,21 @@ const getAllBookings = async (req, res) => {
                 delivery_address: booking.delivery_address || null,
                 distance: booking.distance || 0,
                 delivery_fee: booking.delivery_fee || 0,
-                agent_id: booking.agent_id || null
+                agent_id: booking.agent_id || null,
+                // Intelligent Scheduling Fields (Drop-off)
+                est_travel_time: booking.distance ? Math.ceil((parseFloat(booking.distance) / 20) * 60) : 0,
+                est_departure_time: (booking.start_date && booking.start_time && booking.distance) ? 
+                    new Date(new Date(`${booking.start_date}T${booking.start_time}`).getTime() - (Math.ceil((parseFloat(booking.distance) / 20) * 60) * 60000)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
+                est_return_to_shop: (booking.start_date && booking.start_time && booking.distance) ? 
+                    new Date(new Date(`${booking.start_date}T${booking.start_time}`).getTime() + ((10 + Math.ceil((parseFloat(booking.distance) / 20) * 60)) * 60000)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
+                busy_until: (booking.start_date && booking.start_time && booking.distance) ? 
+                    new Date(new Date(`${booking.start_date}T${booking.start_time}`).getTime() + ((10 + Math.ceil((parseFloat(booking.distance) / 20) * 60) + 15) * 60000)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
+
+                // Return Pickup Scheduling (Collection)
+                pickup_est_departure: (booking.start_date && booking.start_time && booking.distance) ? 
+                    new Date(new Date(`${booking.start_date}T${booking.start_time}`).getTime() + (duration * 3600000) - (Math.ceil((parseFloat(booking.distance) / 20) * 60) * 60000)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
+                pickup_est_return: (booking.start_date && booking.start_time && booking.distance) ? 
+                    new Date(new Date(`${booking.start_date}T${booking.start_time}`).getTime() + (duration * 3600000) + ((10 + Math.ceil((parseFloat(booking.distance) / 20) * 60)) * 60000)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null
             };
         });
 
@@ -204,7 +218,21 @@ const getBookingById = async (req, res) => {
             delivery_address: booking.delivery_address || null,
             distance: booking.distance || 0,
             delivery_fee: booking.delivery_fee || 0,
-            agent_id: booking.agent_id || null
+            agent_id: booking.agent_id || null,
+            // Intelligent Scheduling Fields (Drop-off)
+            est_travel_time: booking.distance ? Math.ceil((parseFloat(booking.distance) / 20) * 60) : 0,
+            est_departure_time: (booking.start_date && booking.start_time && booking.distance) ? 
+                new Date(new Date(`${booking.start_date}T${booking.start_time}`).getTime() - (Math.ceil((parseFloat(booking.distance) / 20) * 60) * 60000)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
+            est_return_to_shop: (booking.start_date && booking.start_time && booking.distance) ? 
+                new Date(new Date(`${booking.start_date}T${booking.start_time}`).getTime() + ((10 + Math.ceil((parseFloat(booking.distance) / 20) * 60)) * 60000)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
+            busy_until: (booking.start_date && booking.start_time && booking.distance) ? 
+                new Date(new Date(`${booking.start_date}T${booking.start_time}`).getTime() + ((10 + Math.ceil((parseFloat(booking.distance) / 20) * 60) + 15) * 60000)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
+
+            // Return Pickup Scheduling (Collection)
+            pickup_est_departure: (booking.start_date && booking.start_time && booking.distance) ? 
+                new Date(new Date(`${booking.start_date}T${booking.start_time}`).getTime() + (duration * 3600000) - (Math.ceil((parseFloat(booking.distance) / 20) * 60) * 60000)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
+            pickup_est_return: (booking.start_date && booking.start_time && booking.distance) ? 
+                new Date(new Date(`${booking.start_date}T${booking.start_time}`).getTime() + (duration * 3600000) + ((10 + Math.ceil((parseFloat(booking.distance) / 20) * 60)) * 60000)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null
         };
 
         res.json(enrichedBooking);

@@ -922,20 +922,58 @@ async function sendAddressUpdateEmail(userEmail, userName, bookingDetails) {
     });
 }
 
-// 1. Notify Agent about a New Job Assignment
-async function sendAgentAssignmentEmail(agentEmail, agentName, bookingId) {
+// 1. Notify Agent about a New Job Assignment (Full-Service)
+async function sendAgentAssignmentEmail(agentEmail, agentName, bookingId, bookingDetails = {}) {
+    const { startTime, endTime, distance, address } = bookingDetails;
+    
     const html = `
-        <div style="font-family: sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px; border-radius: 10px;">
-            <h2 style="color: #0284c7;">🚀 New Delivery Job Assigned!</h2>
-            <p>Hello ${agentName},</p>
-            <p>A new car delivery task (#${bookingId}) has been assigned to you. Please log in to your portal to <b>Accept</b> the task.</p>
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="${process.env.FRONTEND_URL}/agent-portal" style="background: #0284c7; color: white; padding: 12px 25px; text-decoration: none; border-radius: 50px; font-weight: bold;">Go to Agent Portal</a>
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; border: 1px solid #e2e8f0; padding: 0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.05);">
+            <div style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); padding: 30px; text-align: center; color: white;">
+                <div style="font-size: 40px; margin-bottom: 10px;">📦</div>
+                <h2 style="margin: 0; font-size: 24px; font-weight: 800;">Full-Service Task Assigned</h2>
+                <p style="margin: 5px 0 0 0; opacity: 0.9;">Booking #${bookingId}</p>
             </div>
-            <p style="color: #666; font-size: 0.8em;">Note: Please accept within 15 minutes to avoid auto-unassignment.</p>
+
+            <div style="padding: 30px; color: #334155;">
+                <p style="font-size: 16px;">Hello <b>${agentName}</b>,</p>
+                <p style="font-size: 15px; line-height: 1.6;">You have been assigned a <b>Full-Service</b> delivery task. This task requires you to handle both the initial drop-off and the final collection.</p>
+                
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin: 25px 0;">
+                    <h4 style="margin: 0 0 15px 0; color: #0284c7; border-bottom: 1px solid #e2e8f0; pb: 10px; font-size: 16px;">📋 Task Breakdown:</h4>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <p style="margin: 0 0 5px 0; font-weight: bold; color: #0369a1;">📍 Part 1: Delivery (Drop-off)</p>
+                        <p style="margin: 0; font-size: 14px;">Expected at Customer: <b>${startTime || 'See Portal'}</b></p>
+                    </div>
+
+                    <div style="margin-bottom: 15px;">
+                        <p style="margin: 0 0 5px 0; font-weight: bold; color: #0369a1;">🔄 Part 2: Collection (Return Pickup)</p>
+                        <p style="margin: 0; font-size: 14px;">Collect from Customer: <b>${endTime || 'See Portal'}</b></p>
+                    </div>
+
+                    <div style="border-top: 1px solid #e2e8f0; pt: 10px;">
+                        <p style="margin: 0; font-size: 14px;"><b>Customer Address:</b> ${address || 'See Portal'}</p>
+                        <p style="margin: 5px 0 0 0; font-size: 14px;"><b>Distance:</b> ${distance || '?' } km</p>
+                    </div>
+                </div>
+
+                <div style="text-align: center; margin: 35px 0;">
+                    <a href="${process.env.FRONTEND_URL}/agent-portal" style="background: #0284c7; color: white; padding: 16px 35px; text-decoration: none; border-radius: 50px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 15px rgba(2, 132, 199, 0.3); display: inline-block;">
+                        Accept Job in Portal
+                    </a>
+                </div>
+
+                <p style="color: #64748b; font-size: 13px; text-align: center; font-style: italic;">
+                    * You are free to take other jobs between Part 1 and Part 2.
+                </p>
+            </div>
+            
+            <div style="background: #f1f5f9; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+                <p style="margin: 0; font-size: 12px; color: #94a3b8;">RentHub Logistics | Premium Delivery Network</p>
+            </div>
         </div>
     `;
-    return sendEmail({ to: agentEmail, subject: `New Job Assignment: #${bookingId}`, html });
+    return sendEmail({ to: agentEmail, subject: `🚨 Full-Service Job: #${bookingId} assigned to you`, html });
 }
 
 // 2. Notify User that an Agent has Accepted and provide Tracking Link

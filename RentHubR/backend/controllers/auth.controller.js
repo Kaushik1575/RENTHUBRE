@@ -12,9 +12,19 @@ const registerSendOtp = async (req, res) => {
         const { email } = req.body;
         if (!email) return res.status(400).json({ error: 'Email is required' });
 
-        // If user already exists, don't send OTP
-        const existingUser = await SupabaseDB.getUserByEmail(email);
-        if (existingUser) return res.status(400).json({ error: 'Email already registered' });
+        // Check ONLY the Delivery Agent table as requested
+        const { data: existingAgent } = await supabase
+            .from('delivery_agents')
+            .select('id')
+            .eq('email', email)
+            .single();
+
+        if (existingAgent) {
+            return res.status(400).json({ 
+                error: 'This email is already registered as a Delivery Agent.',
+                isAlreadyRegistered: true 
+            });
+        }
 
         // Generate OTP
         const otp = generateOTP();
@@ -54,15 +64,15 @@ const registerSendMobileOtp = async (req, res) => {
         const { phoneNumber } = req.body;
         if (!phoneNumber) return res.status(400).json({ error: 'Phone number is required' });
 
-        // Check if phone number already exists
-        const { data: existingUser, error: checkError } = await supabase
-            .from('users')
-            .select('phone_number')
-            .eq('phone_number', phoneNumber)
+        // Check ONLY the Delivery Agent table as requested
+        const { data: existingAgent } = await supabase
+            .from('delivery_agents')
+            .select('id')
+            .eq('mobile', phoneNumber)
             .single();
 
-        if (existingUser) {
-            return res.status(400).json({ error: 'Mobile number already registered' });
+        if (existingAgent) {
+            return res.status(400).json({ error: 'Mobile number already registered as a Delivery Agent.' });
         }
 
         // Generate OTP

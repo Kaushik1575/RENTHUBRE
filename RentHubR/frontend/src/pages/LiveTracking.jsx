@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 
@@ -8,8 +8,12 @@ const LiveTracking = () => {
     const [agentLocation, setAgentLocation] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [eta, setEta] = useState({ duration: '--', distance: '--' });
 
     const bookingId = searchParams.get('bookingId');
+    const markerRef = useRef(null);
+    const directionsRendererRef = useRef(null);
+    const [mapInstance, setMapInstance] = useState(null);
 
     useEffect(() => {
         if (bookingId) {
@@ -40,109 +44,55 @@ const LiveTracking = () => {
         }
     };
 
-    const [map, setMap] = useState(null);
-    const [agentMarker, setAgentMarker] = useState(null);
-    const [pathPolyline, setPathPolyline] = useState(null);
-
-    const SHOP_LOCATION = { lat: 21.4919493, lng: 86.9026929 };
-
-    // 1. Initialize Map and Draw Path as soon as Booking is loaded
+    // 1. Initialize Map
     useEffect(() => {
-        if (booking && window.google && !map) {
-            console.log("Initializing Map for Booking:", booking.booking_id);
-            
+        if (booking && window.google && !mapInstance) {
             const destination = { 
-                lat: parseFloat(booking.lat) || 21.4433, 
-                lng: parseFloat(booking.lng) || 87.0234 
+                lat: parseFloat(booking.lat) || 21.492298, 
+                lng: parseFloat(booking.lng) || 86.902777 
             };
 
-            const mapInstance = new window.google.maps.Map(document.getElementById('live-map'), {
+            const map = new window.google.maps.Map(document.getElementById('live-map'), {
                 center: destination,
-                zoom: 12,
-                mapTypeControl: false,
-                streetViewControl: false,
-                fullscreenControl: false,
+                zoom: 15,
+                disableDefaultUI: true,
                 styles: [
-                    { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] }
+                    { "featureType": "all", "elementType": "labels.text.fill", "stylers": [{ "color": "#7c93a3" }, { "lightness": "-10" }] },
+                    { "featureType": "administrative.country", "elementType": "geometry", "stylers": [{ "visibility": "on" }] },
+                    { "featureType": "landscape", "elementType": "geometry", "stylers": [{ "color": "#f5f5f5" }] },
+                    { "featureType": "poi", "stylers": [{ "visibility": "off" }] },
+                    { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#ffffff" }] },
+                    { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#d2d2d2" }] }
                 ]
             });
 
-            const directionsService = new window.google.maps.DirectionsService();
-            const directionsRenderer = new window.google.maps.DirectionsRenderer({
-                map: mapInstance,
+            directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
+                map: map,
                 suppressMarkers: true,
-                polylineOptions: { strokeColor: '#2563eb', strokeWeight: 6, strokeOpacity: 0.7 }
-            });
-
-            directionsService.route({
-                origin: SHOP_LOCATION,
-                destination: destination,
-                travelMode: window.google.maps.TravelMode.DRIVING
-            }, (result, status) => {
-                const bounds = new window.google.maps.LatLngBounds();
-                if (status === 'OK') {
-                    directionsRenderer.setDirections(result);
-                    result.routes[0].overview_path.forEach(p => bounds.extend(p));
-                } else {
-                    // Fallback Polyline
-                    const poly = new window.google.maps.Polyline({
-                        path: [SHOP_LOCATION, destination],
-                        strokeColor: '#2563eb',
-                        strokeOpacity: 0.6,
-                        strokeWeight: 5,
-                        icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '15px' }],
-                        map: mapInstance
-                    });
-                    setPathPolyline(poly);
-                    bounds.extend(SHOP_LOCATION);
-                    bounds.extend(destination);
+                polylineOptions: {
+                    strokeColor: '#000',
+                    strokeWeight: 5,
+                    strokeOpacity: 0.8
                 }
-                mapInstance.fitBounds(bounds);
             });
 
-            // Add Shop Marker
+            // Home Marker
             new window.google.maps.Marker({
-                position: SHOP_LOCATION, map: mapInstance, label: { text: 'S', color: 'white' }, title: 'Shop'
+                position: destination,
+                map: map,
+                icon: {
+                    url: 'https://cdn-icons-png.flaticon.com/512/1239/1239525.png',
+                    scaledSize: new window.google.maps.Size(40, 40)
+                }
             });
 
-            // Add Home Marker
-            new window.google.maps.Marker({
-                position: destination, map: mapInstance,
-                icon: { url: 'https://maps.google.com/mapfiles/kml/pal2/icon10.png', scaledSize: new window.google.maps.Size(35, 35) }
-            });
-
-            setMap(mapInstance);
+            setMapInstance(map);
         }
-    }, [booking, map]);
+    }, [booking, mapInstance]);
 
-    // 2. Add/Update Agent Marker whenever Location arrives
+    // 2. Real-time Subscription and Smooth Movement
     useEffect(() => {
-        if (map && agentLocation && window.google) {
-            const pos = { lat: agentLocation.lat, lng: agentLocation.lng };
-            
-            if (!agentMarker) {
-                const marker = new window.google.maps.Marker({
-                    position: pos,
-                    map: map,
-                    zIndex: 999,
-                    optimized: false,
-                    icon: {
-                        url: 'https://maps.google.com/mapfiles/kml/pal2/icon47.png', // Car Icon
-                        scaledSize: new window.google.maps.Size(50, 50),
-                        anchor: new window.google.maps.Point(25, 25)
-                    }
-                });
-                setAgentMarker(marker);
-            } else {
-                // Smooth move the marker without refresh
-                agentMarker.setPosition(pos);
-            }
-        }
-    }, [map, agentLocation, agentMarker]);
-
-    // Live Agent Tracking Logic
-    useEffect(() => {
-        if (supabase && booking && booking.agent_id && ['accepted', 'picked_up', 'out_for_delivery'].includes(booking.delivery_status)) {
+        if (supabase && booking && booking.agent_id && mapInstance) {
             
             const fetchInitialLocation = async () => {
                 const { data } = await supabase
@@ -152,13 +102,10 @@ const LiveTracking = () => {
                     .single();
                 
                 if (data && data.current_lat) {
-                    setAgentLocation({
-                        lat: data.current_lat,
-                        lng: data.current_lng,
-                        lastUpdated: data.last_active,
-                        name: data.full_name,
-                        phone: data.mobile
-                    });
+                    const newLoc = { lat: data.current_lat, lng: data.current_lng };
+                    setAgentLocation(newLoc);
+                    animateMarker(newLoc);
+                    updateRoute(newLoc);
                 }
             };
             fetchInitialLocation();
@@ -172,184 +119,175 @@ const LiveTracking = () => {
                     filter: `id=eq.${booking.agent_id}`
                 }, (payload) => {
                     if (payload.new && payload.new.current_lat) {
-                        setAgentLocation(prev => ({
-                            ...prev,
-                            lat: payload.new.current_lat,
-                            lng: payload.new.current_lng,
-                            lastUpdated: payload.new.last_active
-                        }));
+                        const newLoc = { lat: payload.new.current_lat, lng: payload.new.current_lng };
+                        animateMarker(newLoc);
+                        setAgentLocation(newLoc);
+                        updateRoute(newLoc);
                     }
                 })
                 .subscribe();
 
             return () => supabase.removeChannel(channel);
         }
-    }, [booking]);
+    }, [booking, mapInstance]);
 
-    if (loading) return <div style={{ padding: '50px', textAlign: 'center' }}>Initializing Live Tracking...</div>;
+    const animateMarker = (newPos) => {
+        if (!markerRef.current) {
+            markerRef.current = new window.google.maps.Marker({
+                position: newPos,
+                map: mapInstance,
+                icon: {
+                    url: 'https://cdn-icons-png.flaticon.com/512/744/744465.png', // Delivery Scooter/Car
+                    scaledSize: new window.google.maps.Size(45, 45),
+                    anchor: new window.google.maps.Point(22, 22)
+                },
+                zIndex: 1000
+            });
+            return;
+        }
+
+        const startPos = markerRef.current.getPosition();
+        const frames = 60;
+        let frame = 0;
+
+        const deltaLat = (newPos.lat - startPos.lat()) / frames;
+        const deltaLng = (newPos.lng - startPos.lng()) / frames;
+
+        const animate = () => {
+            frame++;
+            if (frame <= frames) {
+                const nextPos = new window.google.maps.LatLng(
+                    startPos.lat() + deltaLat * frame,
+                    startPos.lng() + deltaLng * frame
+                );
+                markerRef.current.setPosition(nextPos);
+                requestAnimationFrame(animate);
+            }
+        };
+        animate();
+    };
+
+    const updateRoute = (origin) => {
+        if (!mapInstance || !origin || !window.google) return;
+
+        const destination = { 
+            lat: parseFloat(booking.lat) || 21.4433, 
+            lng: parseFloat(booking.lng) || 87.0234 
+        };
+
+        const service = new window.google.maps.DirectionsService();
+        service.route({
+            origin,
+            destination,
+            travelMode: 'DRIVING'
+        }, (result, status) => {
+            if (status === 'OK') {
+                directionsRendererRef.current.setDirections(result);
+                const leg = result.routes[0].legs[0];
+                setEta({
+                    duration: leg.duration.text,
+                    distance: leg.distance.text
+                });
+            }
+        });
+    };
+
+    if (loading) return (
+        <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
+            <div className="loader"></div>
+            <p style={{ marginTop: '20px', fontWeight: '600', color: '#666' }}>Initializing Secure Tracking...</p>
+        </div>
+    );
 
     return (
-        <div style={{ maxWidth: '600px', margin: '40px auto', padding: '20px' }}>
-            <h2 style={{ textAlign: 'center', marginBottom: '30px', color: '#2c3e50' }}>
-                <i className="fas fa-map-marker-alt" style={{ color: '#e74c3c', marginRight: '10px' }}></i>
-                Live Delivery Tracking
-            </h2>
+        <div style={{ height: '100vh', width: '100vw', position: 'relative', overflow: 'hidden', background: '#f0f0f0' }}>
+            {/* The Fullscreen Map */}
+            <div id="live-map" style={{ height: '100%', width: '100%' }}></div>
 
-            {error && (
-                <div style={{ padding: '15px', background: '#fff5f5', color: '#c53030', borderRadius: '8px', border: '1px solid #feb2b2', textAlign: 'center' }}>
-                    {error}
+            {/* Back Button */}
+            <button 
+                onClick={() => window.history.back()}
+                style={{
+                    position: 'absolute', top: '20px', left: '20px', zIndex: 10,
+                    width: '45px', height: '45px', borderRadius: '50%', background: 'white',
+                    border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', cursor: 'pointer'
+                }}
+            >
+                <i className="fas fa-arrow-left"></i>
+            </button>
+
+            {/* Status Overlay (Top) */}
+            <div style={{
+                position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
+                background: 'rgba(0,0,0,0.85)', color: 'white', padding: '12px 25px', borderRadius: '50px',
+                display: 'flex', alignItems: 'center', gap: '12px', zIndex: 10, backdropFilter: 'blur(5px)'
+            }}>
+                <div className="pulse-dot"></div>
+                <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>Agent is arriving in {eta.duration}</span>
+            </div>
+
+            {/* Bottom Card (Uber Style) */}
+            <div style={{
+                position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
+                width: '90%', maxWidth: '450px', background: 'white', borderRadius: '24px',
+                padding: '25px', boxShadow: '0 10px 40px rgba(0,0,0,0.2)', zIndex: 10
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                    <div>
+                        <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800' }}>{eta.duration}</h3>
+                        <p style={{ margin: 0, color: '#666', fontSize: '0.9rem' }}>{eta.distance} away from you</p>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                        <span style={{ background: '#e8f5e9', color: '#2e7d32', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: '700' }}>
+                            OUT FOR DELIVERY
+                        </span>
+                    </div>
                 </div>
-            )}
 
-            {booking && (
-                <div style={{ background: 'white', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '20px' }}>
-                    {/* Header Info */}
-                    <div style={{ padding: '20px', background: '#f8f9fa', borderBottom: '1px solid #eee' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                                <span style={{ fontSize: '0.8rem', color: '#666', textTransform: 'uppercase' }}>Booking ID</span>
-                                <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{booking.booking_id}</div>
-                            </div>
-                            <div style={{ textAlign: 'right' }}>
-                                <span style={{ 
-                                    padding: '5px 12px', background: '#e3f2fd', color: '#1976d2', 
-                                    borderRadius: '20px', fontSize: '0.75rem', fontWeight: 'bold' 
-                                }}>
-                                    {booking.delivery_status?.toUpperCase().replace('_', ' ')}
-                                </span>
-                            </div>
+                <div style={{ height: '1px', background: '#eee', marginBottom: '20px' }}></div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                    <div style={{ width: '55px', height: '55px', background: '#f0f0f0', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        <img src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png" alt="Agent" style={{ width: '80%' }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                        <h4 style={{ margin: 0, fontSize: '1.1rem' }}>{booking?.agent_name || 'Delivery Partner'}</h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#f39c12', fontSize: '0.85rem' }}>
+                            <i className="fas fa-star"></i> 4.9 • Verified
                         </div>
                     </div>
-
-                    {/* Map Section - Google Maps App Style */}
-                    <div style={{ position: 'relative', overflow: 'hidden' }}>
-                        {console.log("Rendering Tracking UI with Overlays")}
-                        
-                        {/* Top Instruction Bar (Google Maps Style) */}
-                        <div style={{
-                            position: 'absolute', top: '10px', left: '10px', right: '10px',
-                            background: '#0d6254', color: 'white', padding: '12px 20px',
-                            borderRadius: '12px', zIndex: 999, display: 'flex', alignItems: 'center', gap: '15px',
-                            boxShadow: '0 4px 10px rgba(0,0,0,0.3)'
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <a href={`tel:${booking?.agent_phone || ''}`} style={{
+                            width: '45px', height: '45px', background: '#000', color: 'white',
+                            borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none'
                         }}>
-                            <i className="fas fa-arrow-up" style={{ fontSize: '1.4rem' }}></i>
-                            <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>Arriving at your location</div>
-                                <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>Agent is on the way</div>
-                            </div>
-                            <div style={{ width: '35px', height: '35px', background: 'rgba(255,255,255,0.2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <i className="fas fa-microphone"></i>
-                            </div>
-                        </div>
-
-                        {/* The Actual Map */}
-                        <div id="live-map" style={{ height: '450px', background: '#eee' }}>
-                            {!window.google && (
-                                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    Loading Google Maps...
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Floating Re-centre Button */}
-                        <div style={{ position: 'absolute', bottom: '120px', left: '15px', zIndex: 999 }}>
-                            <button 
-                                onClick={() => map && agentLocation && map.panTo({ lat: agentLocation.lat, lng: agentLocation.lng })}
-                                style={{
-                                    background: 'white', border: 'none', padding: '8px 15px', borderRadius: '30px',
-                                    display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', color: '#0d6254',
-                                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)', cursor: 'pointer'
-                                }}
-                            >
-                                <i className="fas fa-location-arrow"></i> Re-centre
-                            </button>
-                        </div>
-
-                        {/* Bottom Summary Bar (Google Maps Style) */}
-                        <div style={{
-                            position: 'absolute', bottom: '0', left: '0', right: '0',
-                            background: 'white', padding: '15px 20px', zIndex: 999,
-                            borderTop: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            boxShadow: '0 -4px 15px rgba(0,0,0,0.1)'
+                            <i className="fas fa-phone-alt"></i>
+                        </a>
+                        <button style={{
+                            width: '45px', height: '45px', background: '#f0f0f0', color: '#333',
+                            borderRadius: '50%', border: 'none', cursor: 'pointer'
                         }}>
-                            <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-                                <span style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#e67e22' }}>
-                                    {(() => {
-                                        const dest = { lat: parseFloat(booking.lat) || 21.4433, lng: parseFloat(booking.lng) || 87.0234 };
-                                        const dist = agentLocation ? Math.sqrt(Math.pow(agentLocation.lat - dest.lat, 2) + Math.pow(agentLocation.lng - dest.lng, 2)) * 111 : 0;
-                                        const time = Math.round((dist / 30) * 60) + 2;
-                                        return time < 1 ? '1' : time;
-                                    })()}
-                                </span>
-                                <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#e67e22' }}>min</span>
-                                <span style={{ color: '#666', marginLeft: '10px' }}>
-                                    {(() => {
-                                        const dest = { lat: parseFloat(booking.lat) || 21.4433, lng: parseFloat(booking.lng) || 87.0234 };
-                                        const dist = agentLocation ? Math.sqrt(Math.pow(agentLocation.lat - dest.lat, 2) + Math.pow(agentLocation.lng - dest.lng, 2)) * 111 : 0;
-                                        return dist.toFixed(1);
-                                    })()} km
-                                </span>
-                            </div>
-                            <div style={{ width: '45px', height: '45px', border: '2px solid #eee', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <i className="fas fa-times" style={{ color: '#666' }}></i>
-                            </div>
-                        </div>
+                            <i className="fas fa-comment"></i>
+                        </button>
                     </div>
-
-                    {/* Agent Details (Conditional) */}
-                    {agentLocation && (
-                        <div style={{ padding: '20px', borderTop: '1px solid #eee' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                <div style={{ width: '50px', height: '50px', background: '#3498db', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <i className="fas fa-user-tie" style={{ fontSize: '1.5rem' }}></i>
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ fontWeight: 'bold', fontSize: '1rem' }}>{agentLocation.name || 'Delivery Partner'}</div>
-                                    <div style={{ fontSize: '0.8rem', color: '#666' }}>Your assigned delivery expert</div>
-                                </div>
-                                {agentLocation.phone && (
-                                    <a href={`tel:${agentLocation.phone}`} style={{ 
-                                        width: '45px', height: '45px', background: '#2ecc71', color: 'white', 
-                                        borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        textDecoration: 'none'
-                                    }}>
-                                        <i className="fas fa-phone-alt"></i>
-                                    </a>
-                                )}
-                            </div>
-                            
-                            <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #eee', textAlign: 'center' }}>
-                                <span style={{ fontSize: '0.75rem', color: '#999' }}>
-                                    <i className="far fa-clock"></i> Last updated: {new Date(agentLocation.lastUpdated).toLocaleTimeString()}
-                                </span>
-                            </div>
-                        </div>
-                    )}
                 </div>
-            )}
-
-            {!agentLocation && !error && booking && (
-                <div style={{ textAlign: 'center', padding: '40px', background: '#f8f9fa', borderRadius: '15px' }}>
-                    <i className="fas fa-clock" style={{ fontSize: '3rem', color: '#bdc3c7', marginBottom: '20px' }}></i>
-                    <h3>Waiting for Agent to Start</h3>
-                    <p style={{ color: '#7f8c8d' }}>Once the agent picks up your vehicle, the live map will appear here.</p>
-                </div>
-            )}
+            </div>
 
             <style>{`
                 .pulse-dot {
-                    width: 8px;
-                    height: 8px;
-                    background: #d32f2f;
-                    border-radius: 50%;
-                    display: inline-block;
-                    animation: pulse 1.5s infinite;
+                    width: 10px; height: 10px; background: #2ecc71; border-radius: 50%;
+                    box-shadow: 0 0 0 rgba(46, 204, 113, 0.4); animation: pulse 2s infinite;
                 }
                 @keyframes pulse {
-                    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(211, 47, 47, 0.7); }
-                    70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(211, 47, 47, 0); }
-                    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(211, 47, 47, 0); }
+                    0% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.4); }
+                    70% { box-shadow: 0 0 0 10px rgba(46, 204, 113, 0); }
+                    100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
                 }
+                .loader {
+                    border: 4px solid #f3f3f3; border-top: 4px solid #000;
+                    border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;
+                }
+                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
             `}</style>
         </div>
     );

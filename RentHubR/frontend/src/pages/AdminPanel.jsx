@@ -1598,6 +1598,40 @@ ${isRefund ? `Refund: ₹${Math.abs(balance)}` : `Balance: ₹${balance}`}
                                 <p><strong>Transaction ID:</strong> {modal.data.transaction_id}</p>
                             )}
 
+                            {modal.data.delivery_option === 'home_delivery' && (
+                                <div style={{ background: '#f0f9ff', padding: '15px', borderRadius: '8px', border: '1px solid #bae6fd', marginTop: '15px' }}>
+                                    <h4 style={{ margin: '0 0 10px 0', color: '#0369a1', fontSize: '1rem' }}>
+                                        <i className="fas fa-clock"></i> Full-Service Dispatch Schedule
+                                    </h4>
+                                    
+                                    {/* Delivery Window */}
+                                    <div style={{ marginBottom: '15px', borderBottom: '1px dashed #bae6fd', pb: '10px' }}>
+                                        <p style={{ fontWeight: 'bold', color: '#0369a1', marginBottom: '5px' }}>
+                                            <i className="fas fa-truck-loading"></i> Part 1: Delivery (Drop-off)
+                                        </p>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.85rem' }}>
+                                            <p><i className="fas fa-sign-out-alt"></i> Leave Shop: <b>{modal.data.est_departure_time || 'N/A'}</b></p>
+                                            <p><i className="fas fa-store"></i> Back at Shop: <b>{modal.data.est_return_to_shop || 'N/A'}</b></p>
+                                        </div>
+                                    </div>
+
+                                    {/* Collection Window */}
+                                    <div>
+                                        <p style={{ fontWeight: 'bold', color: '#0369a1', marginBottom: '5px' }}>
+                                            <i className="fas fa-truck-pickup"></i> Part 2: Collection (Return Pickup)
+                                        </p>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.85rem' }}>
+                                            <p><i className="fas fa-sign-out-alt"></i> Leave Shop: <b>{modal.data.pickup_est_departure || 'N/A'}</b></p>
+                                            <p><i className="fas fa-store"></i> Back at Shop: <b>{modal.data.pickup_est_return || 'N/A'}</b></p>
+                                        </div>
+                                    </div>
+
+                                    <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '12px', fontStyle: 'italic', borderTop: '1px solid #bae6fd', paddingTop: '8px' }}>
+                                        * Intervals: Travel (X2) + 10m buffer. Agents are free between tasks.
+                                    </p>
+                                </div>
+                            )}
+
                             <div style={{ marginTop: '15px', padding: '10px', background: '#f8f9fa', borderRadius: '5px', border: '1px solid #e9ecef', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <i className="fas fa-calendar-alt" style={{ color: '#6c757d' }}></i>
                                 <span style={{ color: '#495057', fontSize: '0.9em' }}>
@@ -1622,12 +1656,65 @@ ${isRefund ? `Refund: ₹${Math.abs(balance)}` : `Balance: ₹${balance}`}
                                                 className="form-control"
                                                 value={modal.data.agent_id || ''}
                                                 onChange={(e) => handleAssignAgent(modal.data.id, e.target.value)}
-                                                style={{ flex: 1 }}
+                                                style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #ddd' }}
                                             >
                                                 <option value="">Select Agent</option>
-                                                {deliveryAgents.filter(a => a.is_verified).map(agent => (
-                                                    <option key={agent.id} value={agent.id}>{agent.full_name} ({agent.preferred_area || 'No area set'})</option>
-                                                ))}
+                                                {deliveryAgents.filter(a => a.is_verified).map(agent => {
+                                                    // Conflict Check Logic (Match Backend autoAssigner.js)
+                                                    const isBusy = () => {
+                                                        const currentBooking = modal.data;
+                                                        if (!currentBooking.start_date || !currentBooking.start_time) return false;
+
+                                                        const AVG_SPEED_KMH = 20;
+                                                        const HANDOVER_MINS = 10;
+                                                        const SAFETY_BUFFER_MINS = 15;
+
+                                                        const getWindows = (b) => {
+                                                            const dist = parseFloat(b.distance) || 5;
+                                                            const dur = parseInt(b.duration) || 0;
+                                                            const travel = Math.ceil((dist / AVG_SPEED_KMH) * 60);
+                                                            const start = new Date(`${b.start_date}T${b.start_time}`);
+                                                            const end = new Date(start.getTime() + (dur * 3600000));
+                                                            
+                                                            return [
+                                                                { s: start.getTime() - (travel * 60000), e: start.getTime() + ((HANDOVER_MINS + travel + SAFETY_BUFFER_MINS) * 60000) },
+                                                                { s: end.getTime() - (travel * 60000), e: end.getTime() + ((HANDOVER_MINS + travel + SAFETY_BUFFER_MINS) * 60000) }
+                                                            ];
+                                                        };
+
+                                                        const currentWindows = getWindows(currentBooking);
+                                                        
+                                                        // Check against all other confirmed bookings for this agent on the same day
+                                                        const agentJobs = bookings.filter(b => 
+                                                            b.agent_id === agent.id && 
+                                                            b.start_date === currentBooking.start_date &&
+                                                            b.id !== currentBooking.id &&
+                                                            ['confirmed', 'ride_started', 'ride_completed'].includes(b.status)
+                                                        );
+
+                                                        for (const job of agentJobs) {
+                                                            const jobWindows = getWindows(job);
+                                                            for (const cw of currentWindows) {
+                                                                for (const jw of jobWindows) {
+                                                                    if (cw.s < jw.e && cw.e > jw.s) return true;
+                                                                }
+                                                            }
+                                                        }
+                                                        return false;
+                                                    };
+
+                                                    const busy = isBusy();
+
+                                                    return (
+                                                        <option 
+                                                            key={agent.id} 
+                                                            value={agent.id} 
+                                                            style={{ color: busy ? '#ef4444' : 'inherit' }}
+                                                        >
+                                                            {agent.full_name} {busy ? '(Busy - Conflict detected)' : `(${agent.preferred_area || 'Global'})`}
+                                                        </option>
+                                                    );
+                                                })}
                                             </select>
                                         </div>
                                         {modal.data.agent_id && (

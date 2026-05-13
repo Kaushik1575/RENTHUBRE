@@ -35,7 +35,7 @@ const BookingForm = () => {
     });
     
     const RATE_PER_KM = 10;
-    const SHOP_LOCATION = { lat: 21.4919493, lng: 86.9026929 }; // Your Shop Location Fixed
+    const SHOP_LOCATION = { lat: 21.492298, lng: 86.902777 }; // Your Shop Location Fixed
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState(false); // For API calls
     const [bookingId, setBookingId] = useState(null); // Store booking ID for invoice download
@@ -773,7 +773,7 @@ const BookingForm = () => {
                                             loading="lazy"
                                             allowFullScreen
                                             referrerPolicy="no-referrer-when-downgrade"
-                                            src={`https://www.google.com/maps/embed/v1/directions?key=AIzaSyDIIoFnrdbqEuukqUQ5XH4sNhD_9KncetA&origin=${SHOP_LOCATION.lat},${SHOP_LOCATION.lng}&destination=${formData.lat},${formData.lng}&mode=driving&language=en`}
+                                            src={`https://www.google.com/maps/embed/v1/directions?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&origin=${SHOP_LOCATION.lat},${SHOP_LOCATION.lng}&destination=${formData.lat},${formData.lng}&mode=driving&language=en`}
                                         />
                                     ) : (
                                         /* Placeholder before location is picked */
@@ -785,7 +785,7 @@ const BookingForm = () => {
                                             loading="lazy"
                                             allowFullScreen
                                             referrerPolicy="no-referrer-when-downgrade"
-                                            src={`https://www.google.com/maps/embed/v1/place?key=AIzaSyDIIoFnrdbqEuukqUQ5XH4sNhD_9KncetA&q=${SHOP_LOCATION.lat},${SHOP_LOCATION.lng}&zoom=14`}
+                                            src={`https://www.google.com/maps/embed/v1/place?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&q=${SHOP_LOCATION.lat},${SHOP_LOCATION.lng}&zoom=14`}
                                         />
                                     )}
                                 </div>

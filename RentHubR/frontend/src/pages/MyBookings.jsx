@@ -39,7 +39,7 @@ const MyBookings = () => {
     const [newLat, setNewLat] = useState(null);
     const [newLng, setNewLng] = useState(null);
     const [trackingBooking, setTrackingBooking] = useState(null);
-    const SHOP_LOCATION = { lat: 21.4919493, lng: 86.9026929 };
+    const SHOP_LOCATION = { lat: 21.492298, lng: 86.902777 };
     const RATE_PER_KM = 10;
 
     // Force re-render every minute to update cancel button visibility
@@ -543,7 +543,7 @@ const MyBookings = () => {
                                                             height="100%"
                                                             style={{ border: 0 }}
                                                             loading="lazy"
-                                                            src={`https://www.google.com/maps/embed/v1/directions?key=AIzaSyDIIoFnrdbqEuukqUQ5XH4sNhD_9KncetAs&origin=${SHOP_LOCATION.lat},${SHOP_LOCATION.lng}&destination=${newLat},${newLng}&mode=driving&language=en`}
+                                                            src={`https://www.google.com/maps/embed/v1/directions?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&origin=${SHOP_LOCATION.lat},${SHOP_LOCATION.lng}&destination=${newLat},${newLng}&mode=driving&language=en`}
                                                         />
                                                     ) : (
                                                         <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fdf9', color: '#15803d', fontSize: '0.85rem' }}>
@@ -580,6 +580,24 @@ const MyBookings = () => {
                                         <p style={{ margin: '8px 0 0 0', fontSize: '0.75rem', color: '#15803d', borderTop: '1px solid #dcfce7', paddingTop: '5px' }}>
                                             <i className="fas fa-info-circle"></i> Address can be updated up to 2 hours before pickup.
                                         </p>
+
+                                        {/* --- ARRIVAL TIMINGS --- */}
+                                        <div style={{ marginTop: '12px', padding: '10px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                            <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 'bold', color: '#475569', borderBottom: '1px solid #e2e8f0', pb: '5px' }}>
+                                                <i className="fas fa-clock"></i> Expected Arrival Timings:
+                                            </p>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                                <p style={{ margin: 0, fontSize: '0.8rem' }}>
+                                                    <i className="fas fa-arrow-right" style={{ color: '#16a34a' }}></i> <b>Delivery:</b> Our agent will arrive around <b>{booking.start_time}</b>.
+                                                </p>
+                                                <p style={{ margin: 0, fontSize: '0.8rem' }}>
+                                                    <i className="fas fa-undo" style={{ color: '#2563eb' }}></i> <b>Return:</b> Agent will collect the vehicle around <b>{booking.displayEndDate.split('(')[1].replace(')', '')}</b>.
+                                                </p>
+                                            </div>
+                                            <p style={{ margin: '8px 0 0 0', fontSize: '0.7rem', color: '#64748b', fontStyle: 'italic' }}>
+                                                * Timings are approximate based on distance.
+                                            </p>
+                                        </div>
 
                                         {/* --- LIVE TRACKING BUTTON --- */}
                                         {booking.agent_id && ['picked_up', 'out_for_delivery'].includes(booking.delivery_status) && (
