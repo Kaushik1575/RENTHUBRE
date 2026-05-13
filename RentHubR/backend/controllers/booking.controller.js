@@ -569,7 +569,8 @@ Vehicle: ${vehicleName}
 Pickup: ${startDate} at ${formattedStartTime}
 Check your email for the invoice.
 Happy Riding! 🚗`;
-                        await sendSMS(targetPhone, smsMessage);
+                        const smsResult = await sendSMS(targetPhone, smsMessage);
+                        console.log(`📱 SMS Status for ${targetPhone}:`, smsResult?.sid ? 'SENT' : `FAILED (${smsResult?.error || 'Unknown Error'})`);
                     }
 
                     console.log(`📧 Rich confirmation email with PDF sent to ${userDetails.email}`);

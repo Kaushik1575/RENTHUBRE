@@ -13,17 +13,19 @@ const sendSMS = async (to, message) => {
         }
 
         const client = new twilio(accountSid, authToken);
+        const phoneStr = String(to).trim();
         
         const response = await client.messages.create({
             body: message,
             from: twilioNumber,
-            to: to.startsWith('+') ? to : `+91${to}` // Default to India prefix if missing
+            to: phoneStr.startsWith('+') ? phoneStr : `+91${phoneStr}`
         });
 
         console.log('✅ SMS sent successfully. Message SID:', response.sid);
         return response;
     } catch (error) {
         console.error('❌ Twilio SMS Error:', error.message);
+        return { success: false, error: error.message };
     }
 };
 
