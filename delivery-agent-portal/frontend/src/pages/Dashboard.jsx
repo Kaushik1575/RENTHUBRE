@@ -44,7 +44,12 @@ const Dashboard = () => {
             })
             .eq('id', agent.id);
         },
-        (error) => console.error('Tracking Error:', error),
+        (error) => {
+          console.error('Tracking Error:', error);
+          if (error.code === 1) {
+            alert("⚠️ Location Access Denied! Please enable GPS permissions in your browser settings to go online.");
+          }
+        },
         { enableHighAccuracy: true, timeout: 5000, maximumAge: 2000 }
       );
     }
