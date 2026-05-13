@@ -70,7 +70,10 @@ const AdminPanel = () => {
     useEffect(() => {
         if (activeTab === 'dashboard') loadDashboardStats();
         if (activeTab === 'users') loadUsers();
-        if (activeTab === 'bookings') loadBookings();
+        if (activeTab === 'bookings') {
+            loadBookings();
+            loadDeliveryAgents();
+        }
         if (activeTab === 'vehicles') loadVehicles();
         if (activeTab === 'requests') loadRequests(); // Load requests
         if (activeTab === 'policies') loadPolicies();
