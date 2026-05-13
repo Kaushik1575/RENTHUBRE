@@ -9,6 +9,7 @@ const LiveTracking = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [eta, setEta] = useState({ duration: '--', distance: '--' });
+    const [agentInfo, setAgentInfo] = useState({ full_name: 'Delivery Partner', mobile: '' });
 
     const bookingId = searchParams.get('bookingId');
     const markerRef = useRef(null);
@@ -101,11 +102,14 @@ const LiveTracking = () => {
                     .eq('id', booking.agent_id)
                     .single();
                 
-                if (data && data.current_lat) {
-                    const newLoc = { lat: data.current_lat, lng: data.current_lng };
-                    setAgentLocation(newLoc);
-                    animateMarker(newLoc);
-                    updateRoute(newLoc);
+                if (data) {
+                    if (data.current_lat) {
+                        const newLoc = { lat: data.current_lat, lng: data.current_lng };
+                        setAgentLocation(newLoc);
+                        animateMarker(newLoc);
+                        updateRoute(newLoc);
+                    }
+                    setAgentInfo({ full_name: data.full_name, mobile: data.mobile });
                 }
             };
             fetchInitialLocation();
@@ -251,13 +255,13 @@ const LiveTracking = () => {
                         <img src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png" alt="Agent" style={{ width: '80%' }} />
                     </div>
                     <div style={{ flex: 1 }}>
-                        <h4 style={{ margin: 0, fontSize: '1.1rem' }}>{booking?.agent_name || 'Delivery Partner'}</h4>
+                        <h4 style={{ margin: 0, fontSize: '1.1rem' }}>{agentInfo.full_name}</h4>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#f39c12', fontSize: '0.85rem' }}>
                             <i className="fas fa-star"></i> 4.9 • Verified
                         </div>
                     </div>
                     <div style={{ display: 'flex', gap: '10px' }}>
-                        <a href={`tel:${booking?.agent_phone || ''}`} style={{
+                        <a href={`tel:${agentInfo.mobile}`} style={{
                             width: '45px', height: '45px', background: '#000', color: 'white',
                             borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none'
                         }}>
