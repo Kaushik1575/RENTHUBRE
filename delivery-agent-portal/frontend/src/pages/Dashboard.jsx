@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { 
   Truck, CheckCircle2, Clock, MapPin, 
   User, Power, TrendingUp, Package,
-  LogOut, ShieldCheck, Star
+  LogOut, ShieldCheck, Star, Store, RotateCcw, Calendar
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
