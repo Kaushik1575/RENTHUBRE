@@ -180,24 +180,47 @@ const AdminPanel = () => {
         } catch (e) { console.error('Error loading agents', e); }
     };
 
-    const handleAssignAgent = async (bookingId, agentId) => {
+    const handleAssignAgent = async (bookingId, agentId, manualAgent = null) => {
         try {
             const res = await fetch(`/api/admin/bookings/${bookingId}/assign-agent`, {
                 method: 'POST',
-                headers: { 
+                headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ agentId })
+                body: JSON.stringify({ agentId, manualAgent })
             });
+
+            const data = await res.json();
             if (res.ok) {
-                setPopup({ isOpen: true, type: 'success', title: 'Assigned', message: 'Delivery agent assigned successfully' });
-                loadBookings();
+                setPopup({ 
+                    isOpen: true, 
+                    type: 'success', 
+                    title: 'Agent Assigned', 
+                    message: data.message 
+                });
+                // Clear manual inputs
+                setManualAgentName('');
+                setManualAgentPhone('');
+                setManualMode(false);
                 setModal({ type: null });
+                loadBookings();
+            } else {
+                setPopup({ 
+                    isOpen: true, 
+                    type: 'error', 
+                    title: 'Assignment Failed', 
+                    message: data.error || 'Failed to assign agent' 
+                });
             }
-        } catch (e) {
-            console.error(e);
-            setPopup({ isOpen: true, type: 'error', title: 'Error', message: 'Failed to assign agent' });
+        } catch (error) {
+            console.error('Error assigning agent:', error);
+            setPopup({ 
+                isOpen: true, 
+                type: 'error', 
+                title: 'Error', 
+                message: 'A network error occurred while assigning the agent.' 
+            });
         }
     };
 
@@ -341,49 +364,7 @@ const AdminPanel = () => {
         } catch (e) { setPopup({ isOpen: true, type: 'error', title: 'Error', message: 'Error updating' }); }
     };
 
-    const handleAssignAgent = async (bookingId, agentId, manualAgent = null) => {
-        try {
-            const res = await fetch(`/api/admin/bookings/${bookingId}/assign-agent`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ agentId, manualAgent })
-            });
 
-            const data = await res.json();
-            if (res.ok) {
-                setPopup({ 
-                    isOpen: true, 
-                    type: 'success', 
-                    title: 'Agent Assigned', 
-                    message: data.message 
-                });
-                // Clear manual inputs
-                setManualAgentName('');
-                setManualAgentPhone('');
-                setManualMode(false);
-                setModal({ type: null });
-                loadBookings();
-            } else {
-                setPopup({ 
-                    isOpen: true, 
-                    type: 'error', 
-                    title: 'Assignment Failed', 
-                    message: data.error || 'Failed to assign agent' 
-                });
-            }
-        } catch (error) {
-            console.error('Error assigning agent:', error);
-            setPopup({ 
-                isOpen: true, 
-                type: 'error', 
-                title: 'Error', 
-                message: 'A network error occurred while assigning the agent.' 
-            });
-        }
-    };
 
     const executeRefundComplete = async () => {
         try {
