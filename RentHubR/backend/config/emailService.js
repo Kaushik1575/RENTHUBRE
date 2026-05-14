@@ -958,7 +958,7 @@ async function sendAgentAssignmentEmail(agentEmail, agentName, bookingId, bookin
                 </div>
 
                 <div style="text-align: center; margin: 35px 0;">
-                    <a href="${process.env.FRONTEND_URL}/agent-portal" style="background: #0284c7; color: white; padding: 16px 35px; text-decoration: none; border-radius: 50px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 15px rgba(2, 132, 199, 0.3); display: inline-block;">
+                    <a href="${process.env.AGENT_PORTAL_URL}/dashboard?acceptBookingId=${bookingId}" style="background: #0284c7; color: white; padding: 16px 35px; text-decoration: none; border-radius: 50px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 15px rgba(2, 132, 199, 0.3); display: inline-block;">
                         Accept Job in Portal
                     </a>
                 </div>

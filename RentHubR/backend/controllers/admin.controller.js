@@ -107,6 +107,7 @@ const getAllBookings = async (req, res) => {
                 distance: booking.distance || 0,
                 delivery_fee: booking.delivery_fee || 0,
                 agent_id: booking.agent_id || null,
+                delivery_status: booking.delivery_status || null,
                 // Intelligent Scheduling Fields (Drop-off)
                 est_travel_time: booking.distance ? Math.ceil((parseFloat(booking.distance) / 20) * 60) : 0,
                 est_departure_time: (booking.start_date && booking.start_time && booking.distance) ? 
@@ -219,6 +220,7 @@ const getBookingById = async (req, res) => {
             distance: booking.distance || 0,
             delivery_fee: booking.delivery_fee || 0,
             agent_id: booking.agent_id || null,
+            delivery_status: booking.delivery_status || null,
             // Intelligent Scheduling Fields (Drop-off)
             est_travel_time: booking.distance ? Math.ceil((parseFloat(booking.distance) / 20) * 60) : 0,
             est_departure_time: (booking.start_date && booking.start_time && booking.distance) ? 
@@ -1808,7 +1810,17 @@ const assignAgent = async (req, res) => {
 
         console.log(`🚚 Assigning agent ${agentId} to booking ${id}`);
 
-        const { data, error } = await supabase
+        // 1. Fetch Agent Details first (need email/name)
+        const { data: agent, error: agentError } = await supabase
+            .from('delivery_agents')
+            .select('*')
+            .eq('id', agentId)
+            .single();
+        
+        if (agentError || !agent) throw new Error('Agent not found');
+
+        // 2. Update Booking
+        const { data: booking, error: updateError } = await supabase
             .from('bookings')
             .update({ 
                 agent_id: agentId, 
@@ -1816,18 +1828,60 @@ const assignAgent = async (req, res) => {
                 updated_at: new Date().toISOString() 
             })
             .eq('id', id)
-            .select()
+            .select('*, users:user_id(full_name, email)')
             .single();
 
-        if (error) throw error;
+        if (updateError) throw updateError;
 
-        // Optionally send notification to agent (Supabase Realtime handles UI, but email/push is good)
-        // For now, we'll assume the agent sees it on their dashboard via Realtime/Polling.
+        // 3. Send Notifications
+        (async () => {
+            try {
+                const { sendAgentAssignmentEmail, sendUserTrackingEmail } = require('../config/emailService');
+                
+                // Fetch vehicle name if possible
+                let vehicleName = 'Vehicle';
+                try {
+                    const table = booking.vehicle_type === 'car' ? 'cars' : 
+                                 booking.vehicle_type === 'bike' ? 'bikes' : 'scooty';
+                    const { data: vData } = await supabase.from(table).select('name').eq('id', booking.vehicle_id).single();
+                    if (vData) vehicleName = vData.name;
+                } catch (vErr) { /* ignore */ }
 
-        res.json({ message: 'Agent assigned successfully', booking: data });
+                // Notify Agent
+                await sendAgentAssignmentEmail(
+                    agent.email,
+                    agent.full_name,
+                    booking.booking_id || booking.id,
+                    {
+                        startTime: `${booking.start_date} ${booking.start_time}`,
+                        endTime: `After ${booking.duration} hours`,
+                        distance: booking.distance,
+                        address: booking.delivery_address,
+                        vehicleName: vehicleName
+                    }
+                );
+                console.log(`📧 Assignment email sent to agent: ${agent.email}`);
+
+                // Notify User (Customer)
+                if (booking.users && booking.users.email) {
+                    await sendUserTrackingEmail(
+                        booking.users.email,
+                        booking.users.full_name,
+                        agent.full_name,
+                        agent.mobile,
+                        booking.id
+                    );
+                    console.log(`📧 Tracking email sent to customer: ${booking.users.email}`);
+                }
+            } catch (notifyErr) {
+                console.error('Failed to send assignment notifications:', notifyErr);
+            }
+        })();
+
+        res.json({ message: 'Agent assigned successfully and both parties notified.', booking });
     } catch (error) {
         console.error('Error assigning agent:', error);
-        res.status(500).json({ error: 'Error assigning agent' });
+        res.status(500).json({ error: error.message || 'Error assigning agent' });
     }
 };
 

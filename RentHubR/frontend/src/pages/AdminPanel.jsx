@@ -73,9 +73,13 @@ const AdminPanel = () => {
         if (activeTab === 'bookings') {
             loadBookings();
             loadDeliveryAgents();
-            // Refresh agents every 15s while on bookings tab
-            const interval = setInterval(loadDeliveryAgents, 15000);
-            return () => clearInterval(interval);
+            // Refresh agents and bookings every 15-30s while on bookings tab
+            const agentInterval = setInterval(loadDeliveryAgents, 15000);
+            const bookingInterval = setInterval(loadBookings, 30000);
+            return () => {
+                clearInterval(agentInterval);
+                clearInterval(bookingInterval);
+            };
         }
         if (activeTab === 'vehicles') loadVehicles();
         if (activeTab === 'requests') loadRequests(); // Load requests
@@ -788,9 +792,24 @@ ${isRefund ? `Refund: ₹${Math.abs(balance)}` : `Balance: ₹${balance}`}
                                                 <td>
                                                     {b.customerName}
                                                     {b.delivery_option === 'home_delivery' && (
-                                                        <span style={{ display: 'block', fontSize: '0.75rem', background: '#fff7ed', color: '#9a3412', padding: '2px 6px', borderRadius: '4px', border: '1px solid #ffedd5', marginTop: '4px', width: 'fit-content' }}>
-                                                            <i className="fas fa-truck"></i> Home Delivery
-                                                        </span>
+                                                        <div style={{ marginTop: '4px' }}>
+                                                            <span style={{ display: 'block', fontSize: '0.75rem', background: '#fff7ed', color: '#9a3412', padding: '2px 6px', borderRadius: '4px', border: '1px solid #ffedd5', width: 'fit-content' }}>
+                                                                <i className="fas fa-truck"></i> Home Delivery
+                                                            </span>
+                                                            <span style={{ 
+                                                                display: 'block', 
+                                                                fontSize: '0.7rem', 
+                                                                fontWeight: 'bold',
+                                                                textTransform: 'uppercase',
+                                                                color: b.delivery_status === 'accepted' ? '#166534' : 
+                                                                       b.delivery_status === 'arrived_at_shop' ? '#1e40af' :
+                                                                       b.delivery_status === 'out_for_delivery' ? '#854d0e' :
+                                                                       b.delivery_status === 'delivered' ? '#15803d' : '#9a3412',
+                                                                marginTop: '2px'
+                                                            }}>
+                                                                • {b.delivery_status || 'Pending'}
+                                                            </span>
+                                                        </div>
                                                     )}
                                                 </td>
                                                 <td>{b.vehicleName}</td>
@@ -1686,15 +1705,33 @@ ${isRefund ? `Refund: ₹${Math.abs(balance)}` : `Balance: ₹${balance}`}
                                     <p><strong>Delivery Fee:</strong> ₹{modal.data.delivery_fee} (2-Way)</p>
                                     
                                     <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #ffedd5' }}>
-                                        <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', fontWeight: '600' }}>Assign Delivery Agent:</label>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                            <label style={{ margin: 0, fontSize: '0.9rem', fontWeight: '700', color: '#9a3412' }}>
+                                                <i className="fas fa-user-plus"></i> Manual Agent Assignment
+                                            </label>
+                                            {!modal.data.agent_id && (
+                                                <span style={{ fontSize: '0.7rem', background: '#fee2e2', color: '#dc2626', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
+                                                    UNASSIGNED
+                                                </span>
+                                            )}
+                                        </div>
+                                        
                                         <div style={{ display: 'flex', gap: '8px' }}>
                                             <select 
                                                 className="form-control"
                                                 value={modal.data.agent_id || ''}
                                                 onChange={(e) => handleAssignAgent(modal.data.id, e.target.value)}
-                                                style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #ddd' }}
+                                                style={{ 
+                                                    flex: 1, 
+                                                    padding: '10px', 
+                                                    borderRadius: '8px', 
+                                                    border: '2px solid #fdba74',
+                                                    fontSize: '0.9rem',
+                                                    fontWeight: '500',
+                                                    background: 'white'
+                                                }}
                                             >
-                                                <option value="">Select Agent</option>
+                                                <option value="">-- Choose Agent to Assign --</option>
                                                 {deliveryAgents.filter(a => a.is_verified).map(agent => {
                                                     // Conflict Check Logic (Match Backend autoAssigner.js)
                                                     const isBusy = () => {
@@ -1745,19 +1782,17 @@ ${isRefund ? `Refund: ₹${Math.abs(balance)}` : `Balance: ₹${balance}`}
                                                         <option 
                                                             key={agent.id} 
                                                             value={agent.id} 
-                                                            style={{ color: busy ? '#ef4444' : 'inherit' }}
+                                                            style={{ color: busy ? '#ef4444' : '#1e293b' }}
                                                         >
-                                                            {agent.full_name} {busy ? '(Busy - Conflict detected)' : `(${agent.preferred_area || 'Global'})`}
+                                                            {agent.full_name} ({agent.mobile}) {busy ? '⚠️ BUSY' : `✅ ${agent.preferred_area || 'Global'}`}
                                                         </option>
                                                     );
                                                 })}
                                             </select>
                                         </div>
-                                        {modal.data.agent_id && (
-                                            <p style={{ marginTop: '10px', fontSize: '0.85rem', color: '#666' }}>
-                                                <i className="fas fa-info-circle"></i> Assigned to: {deliveryAgents.find(a => a.id === modal.data.agent_id)?.full_name}
-                                            </p>
-                                        )}
+                                        <p style={{ marginTop: '8px', fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic' }}>
+                                            <i className="fas fa-info-circle"></i> Selecting an agent will immediately notify them via email and provide the customer with a tracking link.
+                                        </p>
                                     </div>
                                 </div>
                             )}
