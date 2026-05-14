@@ -1805,28 +1805,54 @@ const deleteDeliveryAgent = async (req, res) => {
 // Admin: Assign delivery agent to a booking
 const assignAgent = async (req, res) => {
     try {
-        const { id } = req.params; // booking id
-        const { agentId } = req.body;
+        const { id } = req.params;
+        const { agentId, manualAgent } = req.body; // manualAgent: { name, phone }
 
-        console.log(`🚚 Assigning agent ${agentId} to booking ${id}`);
+        if (!agentId && !manualAgent) {
+            return res.status(400).json({ error: 'Please select an agent or provide manual details.' });
+        }
 
-        // 1. Fetch Agent Details first (need email/name)
-        const { data: agent, error: agentError } = await supabase
-            .from('delivery_agents')
-            .select('*')
-            .eq('id', agentId)
-            .single();
-        
-        if (agentError || !agent) throw new Error('Agent not found');
+        let updateData = {};
+        let agentName = '';
+        let agentPhone = '';
+        let agentEmail = null;
 
-        // 2. Update Booking
-        const { data: booking, error: updateError } = await supabase
-            .from('bookings')
-            .update({ 
+        if (agentId) {
+            // REGISTERED AGENT FLOW
+            const { data: agent, error: agentError } = await supabase
+                .from('delivery_agents')
+                .select('*')
+                .eq('id', agentId)
+                .single();
+            
+            if (agentError || !agent) throw new Error('Agent not found');
+            
+            updateData = { 
                 agent_id: agentId, 
                 delivery_status: 'pending',
                 updated_at: new Date().toISOString() 
-            })
+            };
+            agentName = agent.full_name;
+            agentPhone = agent.mobile;
+            agentEmail = agent.email;
+        } else {
+            // MANUAL AGENT FLOW
+            if (!manualAgent.name || !manualAgent.phone) {
+                return res.status(400).json({ error: 'Manual agent name and phone are required.' });
+            }
+            updateData = { 
+                agent_id: null, 
+                delivery_status: `manual:${manualAgent.name}:${manualAgent.phone}`,
+                updated_at: new Date().toISOString() 
+            };
+            agentName = manualAgent.name;
+            agentPhone = manualAgent.phone;
+        }
+
+        // Update Booking
+        const { data: booking, error: updateError } = await supabase
+            .from('bookings')
+            .update(updateData)
             .eq('id', id)
             .select('*, users:user_id(full_name, email)')
             .single();
@@ -1847,28 +1873,30 @@ const assignAgent = async (req, res) => {
                     if (vData) vehicleName = vData.name;
                 } catch (vErr) { /* ignore */ }
 
-                // Notify Agent
-                await sendAgentAssignmentEmail(
-                    agent.email,
-                    agent.full_name,
-                    booking.booking_id || booking.id,
-                    {
-                        startTime: `${booking.start_date} ${booking.start_time}`,
-                        endTime: `After ${booking.duration} hours`,
-                        distance: booking.distance,
-                        address: booking.delivery_address,
-                        vehicleName: vehicleName
-                    }
-                );
-                console.log(`📧 Assignment email sent to agent: ${agent.email}`);
+                // Notify Agent (Only if registered)
+                if (agentEmail) {
+                    await sendAgentAssignmentEmail(
+                        agentEmail,
+                        agentName,
+                        booking.booking_id || booking.id,
+                        {
+                            startTime: `${booking.start_date} ${booking.start_time}`,
+                            endTime: `After ${booking.duration} hours`,
+                            distance: booking.distance,
+                            address: booking.delivery_address,
+                            vehicleName: vehicleName
+                        }
+                    );
+                    console.log(`📧 Assignment email sent to agent: ${agentEmail}`);
+                }
 
                 // Notify User (Customer)
                 if (booking.users && booking.users.email) {
                     await sendUserTrackingEmail(
                         booking.users.email,
                         booking.users.full_name,
-                        agent.full_name,
-                        agent.mobile,
+                        agentName,
+                        agentPhone,
                         booking.id
                     );
                     console.log(`📧 Tracking email sent to customer: ${booking.users.email}`);
@@ -1878,7 +1906,7 @@ const assignAgent = async (req, res) => {
             }
         })();
 
-        res.json({ message: 'Agent assigned successfully and both parties notified.', booking });
+        res.json({ message: agentId ? 'Agent assigned successfully.' : 'Manual agent assigned successfully.', booking });
     } catch (error) {
         console.error('Error assigning agent:', error);
         res.status(500).json({ error: error.message || 'Error assigning agent' });

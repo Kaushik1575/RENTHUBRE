@@ -51,6 +51,9 @@ const AdminPanel = () => {
     const [vehicleFormData, setVehicleFormData] = useState({});
 
     const [scanInput, setScanInput] = useState('');
+    const [manualMode, setManualMode] = useState(false);
+    const [manualAgentName, setManualAgentName] = useState('');
+    const [manualAgentPhone, setManualAgentPhone] = useState('');
     const [popup, setPopup] = useState({
         isOpen: false,
         type: 'error',
@@ -336,6 +339,50 @@ const AdminPanel = () => {
             loadBookings();
             setPopup({ isOpen: true, type: 'success', title: 'Updated', message: 'Booking updated successfully' });
         } catch (e) { setPopup({ isOpen: true, type: 'error', title: 'Error', message: 'Error updating' }); }
+    };
+
+    const handleAssignAgent = async (bookingId, agentId, manualAgent = null) => {
+        try {
+            const res = await fetch(`/api/admin/bookings/${bookingId}/assign-agent`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ agentId, manualAgent })
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                setPopup({ 
+                    isOpen: true, 
+                    type: 'success', 
+                    title: 'Agent Assigned', 
+                    message: data.message 
+                });
+                // Clear manual inputs
+                setManualAgentName('');
+                setManualAgentPhone('');
+                setManualMode(false);
+                setModal({ type: null });
+                loadBookings();
+            } else {
+                setPopup({ 
+                    isOpen: true, 
+                    type: 'error', 
+                    title: 'Assignment Failed', 
+                    message: data.error || 'Failed to assign agent' 
+                });
+            }
+        } catch (error) {
+            console.error('Error assigning agent:', error);
+            setPopup({ 
+                isOpen: true, 
+                type: 'error', 
+                title: 'Error', 
+                message: 'A network error occurred while assigning the agent.' 
+            });
+        }
     };
 
     const executeRefundComplete = async () => {
@@ -801,13 +848,16 @@ ${isRefund ? `Refund: ₹${Math.abs(balance)}` : `Balance: ₹${balance}`}
                                                                 fontSize: '0.7rem', 
                                                                 fontWeight: 'bold',
                                                                 textTransform: 'uppercase',
-                                                                color: b.delivery_status === 'accepted' ? '#166534' : 
+                                                                color: b.delivery_status?.startsWith('manual:') ? '#ea580c' :
+                                                                       b.delivery_status === 'accepted' ? '#166534' : 
                                                                        b.delivery_status === 'arrived_at_shop' ? '#1e40af' :
                                                                        b.delivery_status === 'out_for_delivery' ? '#854d0e' :
                                                                        b.delivery_status === 'delivered' ? '#15803d' : '#9a3412',
                                                                 marginTop: '2px'
                                                             }}>
-                                                                • {b.delivery_status || 'Pending'}
+                                                                • {b.delivery_status?.startsWith('manual:') 
+                                                                    ? `MANUAL: ${b.delivery_status.split(':')[1]}` 
+                                                                    : (b.delivery_status || 'Pending')}
                                                             </span>
                                                         </div>
                                                     )}
@@ -1623,35 +1673,45 @@ ${isRefund ? `Refund: ₹${Math.abs(balance)}` : `Balance: ₹${balance}`}
                                 <p><strong>Transaction ID:</strong> {modal.data.transaction_id}</p>
                             )}
 
-                            {/* ASSIGNED AGENT INFO (MODERN BOX) */}
-                            {modal.data.agent_id && (
-                                <div style={{ 
-                                    margin: '15px 0', padding: '15px', background: '#f8fafc', 
-                                    borderRadius: '12px', border: '1px solid #e2e8f0',
-                                    display: 'flex', alignItems: 'center', gap: '12px'
-                                }}>
-                                    <div style={{ width: '45px', height: '45px', background: '#3b82f6', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <i className="fas fa-user-tie"></i>
-                                    </div>
-                                    <div style={{ flex: 1 }}>
-                                        <p style={{ margin: 0, fontWeight: '700', color: '#1e293b' }}>
-                                            {deliveryAgents.find(a => a.id === modal.data.agent_id)?.full_name || 'Assigned Agent'}
-                                        </p>
-                                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
-                                            <i className="fas fa-phone-alt"></i> {deliveryAgents.find(a => a.id === modal.data.agent_id)?.mobile || 'N/A'}
-                                        </p>
-                                    </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                        <span style={{ 
-                                            padding: '4px 8px', borderRadius: '20px', fontSize: '0.7rem', fontWeight: '700',
-                                            background: (['online', 'on_delivery'].includes((deliveryAgents.find(a => a.id === modal.data.agent_id)?.status || '').toLowerCase())) ? '#dcfce7' : '#f1f5f9',
-                                            color: (['online', 'on_delivery'].includes((deliveryAgents.find(a => a.id === modal.data.agent_id)?.status || '').toLowerCase())) ? '#166534' : '#64748b'
-                                        }}>
-                                            {(deliveryAgents.find(a => a.id === modal.data.agent_id)?.status || 'offline').toUpperCase()}
-                                        </span>
-                                    </div>
-                                </div>
-                            )}
+                             {/* ASSIGNED AGENT INFO (MODERN BOX) */}
+                             {(modal.data.agent_id || modal.data.delivery_status?.startsWith('manual:')) && (
+                                 <div style={{ 
+                                     margin: '15px 0', padding: '15px', background: '#f8fafc', 
+                                     borderRadius: '12px', border: '1px solid #e2e8f0',
+                                     display: 'flex', alignItems: 'center', gap: '12px'
+                                 }}>
+                                     <div style={{ width: '45px', height: '45px', background: modal.data.agent_id ? '#3b82f6' : '#ea580c', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                         <i className="fas fa-user-tie"></i>
+                                     </div>
+                                     <div style={{ flex: 1 }}>
+                                         <p style={{ margin: 0, fontWeight: '700', color: '#1e293b' }}>
+                                             {modal.data.agent_id 
+                                                 ? (deliveryAgents.find(a => a.id === modal.data.agent_id)?.full_name || 'Assigned Agent')
+                                                 : (modal.data.delivery_status.split(':')[1])}
+                                         </p>
+                                         <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
+                                             <i className="fas fa-phone-alt"></i> {modal.data.agent_id 
+                                                 ? (deliveryAgents.find(a => a.id === modal.data.agent_id)?.mobile || 'N/A')
+                                                 : (modal.data.delivery_status.split(':')[2])}
+                                         </p>
+                                     </div>
+                                     <div style={{ textAlign: 'right' }}>
+                                         <span style={{ 
+                                             padding: '4px 8px', borderRadius: '20px', fontSize: '0.7rem', fontWeight: '700',
+                                             background: modal.data.agent_id ? (
+                                                 (['online', 'on_delivery'].includes((deliveryAgents.find(a => a.id === modal.data.agent_id)?.status || '').toLowerCase())) ? '#dcfce7' : '#f1f5f9'
+                                             ) : '#ffedd5',
+                                             color: modal.data.agent_id ? (
+                                                 (['online', 'on_delivery'].includes((deliveryAgents.find(a => a.id === modal.data.agent_id)?.status || '').toLowerCase())) ? '#166534' : '#64748b'
+                                             ) : '#9a3412'
+                                         }}>
+                                             {modal.data.agent_id 
+                                                 ? (deliveryAgents.find(a => a.id === modal.data.agent_id)?.status || 'offline').toUpperCase()
+                                                 : 'MANUAL'}
+                                         </span>
+                                     </div>
+                                 </div>
+                             )}
 
                             {modal.data.delivery_option === 'home_delivery' && (
                                 <div style={{ background: '#f0f9ff', padding: '15px', borderRadius: '8px', border: '1px solid #bae6fd', marginTop: '15px' }}>
@@ -1707,91 +1767,114 @@ ${isRefund ? `Refund: ₹${Math.abs(balance)}` : `Balance: ₹${balance}`}
                                     <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #ffedd5' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                                             <label style={{ margin: 0, fontSize: '0.9rem', fontWeight: '700', color: '#9a3412' }}>
-                                                <i className="fas fa-user-plus"></i> Manual Agent Assignment
+                                                <i className="fas fa-user-plus"></i> Agent Assignment
                                             </label>
-                                            {!modal.data.agent_id && (
-                                                <span style={{ fontSize: '0.7rem', background: '#fee2e2', color: '#dc2626', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
-                                                    UNASSIGNED
-                                                </span>
-                                            )}
+                                            <div style={{ display: 'flex', gap: '4px' }}>
+                                                <button 
+                                                    onClick={() => setManualMode(false)}
+                                                    style={{ 
+                                                        fontSize: '0.65rem', padding: '2px 8px', borderRadius: '4px',
+                                                        background: !manualMode ? '#9a3412' : '#fed7aa',
+                                                        color: !manualMode ? 'white' : '#9a3412',
+                                                        border: 'none', cursor: 'pointer', fontWeight: 'bold'
+                                                    }}
+                                                >Registered</button>
+                                                <button 
+                                                    onClick={() => setManualMode(true)}
+                                                    style={{ 
+                                                        fontSize: '0.65rem', padding: '2px 8px', borderRadius: '4px',
+                                                        background: manualMode ? '#9a3412' : '#fed7aa',
+                                                        color: manualMode ? 'white' : '#9a3412',
+                                                        border: 'none', cursor: 'pointer', fontWeight: 'bold'
+                                                    }}
+                                                >Manual Entry</button>
+                                            </div>
                                         </div>
                                         
-                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                            <select 
-                                                className="form-control"
-                                                value={modal.data.agent_id || ''}
-                                                onChange={(e) => handleAssignAgent(modal.data.id, e.target.value)}
-                                                style={{ 
-                                                    flex: 1, 
-                                                    padding: '10px', 
-                                                    borderRadius: '8px', 
-                                                    border: '2px solid #fdba74',
-                                                    fontSize: '0.9rem',
-                                                    fontWeight: '500',
-                                                    background: 'white'
-                                                }}
-                                            >
-                                                <option value="">-- Choose Agent to Assign --</option>
-                                                {deliveryAgents.filter(a => a.is_verified).map(agent => {
-                                                    // Conflict Check Logic (Match Backend autoAssigner.js)
-                                                    const isBusy = () => {
-                                                        const currentBooking = modal.data;
-                                                        if (!currentBooking.start_date || !currentBooking.start_time) return false;
-
-                                                        const AVG_SPEED_KMH = 20;
-                                                        const HANDOVER_MINS = 10;
-                                                        const SAFETY_BUFFER_MINS = 15;
-
-                                                        const getWindows = (b) => {
-                                                            const dist = parseFloat(b.distance) || 5;
-                                                            const dur = parseInt(b.duration) || 0;
-                                                            const travel = Math.ceil((dist / AVG_SPEED_KMH) * 60);
-                                                            const start = new Date(`${b.start_date}T${b.start_time}`);
-                                                            const end = new Date(start.getTime() + (dur * 3600000));
-                                                            
-                                                            return [
-                                                                { s: start.getTime() - (travel * 60000), e: start.getTime() + ((HANDOVER_MINS + travel + SAFETY_BUFFER_MINS) * 60000) },
-                                                                { s: end.getTime() - (travel * 60000), e: end.getTime() + ((HANDOVER_MINS + travel + SAFETY_BUFFER_MINS) * 60000) }
-                                                            ];
-                                                        };
-
-                                                        const currentWindows = getWindows(currentBooking);
-                                                        
-                                                        // Check against all other confirmed bookings for this agent on the same day
-                                                        const agentJobs = bookings.filter(b => 
-                                                            b.agent_id === agent.id && 
-                                                            b.start_date === currentBooking.start_date &&
-                                                            b.id !== currentBooking.id &&
-                                                            ['confirmed', 'ride_started', 'ride_completed'].includes(b.status)
-                                                        );
-
-                                                        for (const job of agentJobs) {
-                                                            const jobWindows = getWindows(job);
-                                                            for (const cw of currentWindows) {
-                                                                for (const jw of jobWindows) {
-                                                                    if (cw.s < jw.e && cw.e > jw.s) return true;
+                                        {!manualMode ? (
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <select 
+                                                    className="form-control"
+                                                    value={modal.data.agent_id || ''}
+                                                    onChange={(e) => handleAssignAgent(modal.data.id, e.target.value)}
+                                                    style={{ 
+                                                        flex: 1, padding: '10px', borderRadius: '8px', 
+                                                        border: '2px solid #fdba74', fontSize: '0.9rem',
+                                                        fontWeight: '500', background: 'white'
+                                                    }}
+                                                >
+                                                    <option value="">-- Choose Agent --</option>
+                                                    {deliveryAgents.filter(a => a.is_verified).map(agent => {
+                                                        const isBusy = () => {
+                                                            const currentBooking = modal.data;
+                                                            if (!currentBooking.start_date || !currentBooking.start_time) return false;
+                                                            const AVG_SPEED_KMH = 20;
+                                                            const HANDOVER_MINS = 10;
+                                                            const SAFETY_BUFFER_MINS = 15;
+                                                            const getWindows = (b) => {
+                                                                const dist = parseFloat(b.distance) || 5;
+                                                                const dur = parseInt(b.duration) || 0;
+                                                                const travel = Math.ceil((dist / AVG_SPEED_KMH) * 60);
+                                                                const start = new Date(`${b.start_date}T${b.start_time}`);
+                                                                const end = new Date(start.getTime() + (dur * 3600000));
+                                                                return [
+                                                                    { s: start.getTime() - (travel * 60000), e: start.getTime() + ((HANDOVER_MINS + travel + SAFETY_BUFFER_MINS) * 60000) },
+                                                                    { s: end.getTime() - (travel * 60000), e: end.getTime() + ((HANDOVER_MINS + travel + SAFETY_BUFFER_MINS) * 60000) }
+                                                                ];
+                                                            };
+                                                            const currentWindows = getWindows(currentBooking);
+                                                            const agentJobs = bookings.filter(b => 
+                                                                b.agent_id === agent.id && b.start_date === currentBooking.start_date &&
+                                                                b.id !== currentBooking.id && ['confirmed', 'ride_started', 'ride_completed'].includes(b.status)
+                                                            );
+                                                            for (const job of agentJobs) {
+                                                                const jobWindows = getWindows(job);
+                                                                for (const cw of currentWindows) {
+                                                                    for (const jw of jobWindows) {
+                                                                        if (cw.s < jw.e && cw.e > jw.s) return true;
+                                                                    }
                                                                 }
                                                             }
-                                                        }
-                                                        return false;
-                                                    };
-
-                                                    const busy = isBusy();
-
-                                                    return (
-                                                        <option 
-                                                            key={agent.id} 
-                                                            value={agent.id} 
-                                                            style={{ color: busy ? '#ef4444' : '#1e293b' }}
-                                                        >
-                                                            {agent.full_name} ({agent.mobile}) {busy ? '⚠️ BUSY' : `✅ ${agent.preferred_area || 'Global'}`}
-                                                        </option>
-                                                    );
-                                                })}
-                                            </select>
-                                        </div>
+                                                            return false;
+                                                        };
+                                                        const busy = isBusy();
+                                                        return (
+                                                            <option key={agent.id} value={agent.id} style={{ color: busy ? '#ef4444' : '#1e293b' }}>
+                                                                {agent.full_name} ({agent.mobile}) {busy ? '⚠️ BUSY' : `✅ ${agent.preferred_area || 'Global'}`}
+                                                            </option>
+                                                        );
+                                                    })}
+                                                </select>
+                                            </div>
+                                        ) : (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Agent Name"
+                                                    value={manualAgentName}
+                                                    onChange={(e) => setManualAgentName(e.target.value)}
+                                                    style={{ padding: '10px', borderRadius: '8px', border: '2px solid #fdba74', fontSize: '0.9rem' }}
+                                                />
+                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                    <input 
+                                                        type="text" 
+                                                        placeholder="Phone Number"
+                                                        value={manualAgentPhone}
+                                                        onChange={(e) => setManualAgentPhone(e.target.value)}
+                                                        style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '2px solid #fdba74', fontSize: '0.9rem' }}
+                                                    />
+                                                    <button 
+                                                        onClick={() => handleAssignAgent(modal.data.id, null, { name: manualAgentName, phone: manualAgentPhone })}
+                                                        style={{ 
+                                                            background: '#9a3412', color: 'white', border: 'none', 
+                                                            padding: '0 20px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' 
+                                                        }}
+                                                    >Assign</button>
+                                                </div>
+                                            </div>
+                                        )}
                                         <p style={{ marginTop: '8px', fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic' }}>
-                                            <i className="fas fa-info-circle"></i> Selecting an agent will immediately notify them via email and provide the customer with a tracking link.
+                                            <i className="fas fa-info-circle"></i> This will immediately notify the customer with the agent's contact details.
                                         </p>
                                     </div>
                                 </div>
