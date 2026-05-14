@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  Truck, CheckCircle2, Clock, MapPin, 
+import {
+  Truck, CheckCircle2, Clock, MapPin,
   User, Power, TrendingUp, Package,
-  LogOut, ShieldCheck, Star, Store, RotateCcw, Calendar
+  LogOut, ShieldCheck, Star
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { Scanner } from '@yudiel/react-qr-scanner';
 
 const Dashboard = () => {
   const [agent, setAgent] = useState(null);
@@ -16,8 +15,8 @@ const Dashboard = () => {
   const [tasks, setTasks] = useState([]);
   const [actionLoading, setActionLoading] = useState(null); // Track which task is being updated
   const [stats, setStats] = useState({ todayDeliveries: 0, earnings: 0, activeTasks: 0, pendingTasks: 0 });
-  const [scanModal, setScanModal] = useState({ isOpen: false, taskId: null, type: null }); // type: 'start' or 'end'
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     fetchAgentProfile();
@@ -33,24 +32,19 @@ const Dashboard = () => {
         async (position) => {
           const { latitude, longitude } = position.coords;
           console.log(`📍 Location Update: ${latitude}, ${longitude}`);
-          
+
           // Update Supabase with current position
           await supabase
             .from('delivery_agents')
-            .update({ 
-              current_lat: latitude, 
+            .update({
+              current_lat: latitude,
               current_lng: longitude,
               last_active: new Date().toISOString()
             })
             .eq('id', agent.id);
         },
-        (error) => {
-          console.error('Tracking Error:', error);
-          if (error.code === 1) {
-            alert("⚠️ Location Access Denied! Please enable GPS permissions in your browser settings to go online.");
-          }
-        },
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 2000 }
+        (error) => console.error('Tracking Error:', error),
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
       );
     }
 
@@ -62,7 +56,7 @@ const Dashboard = () => {
   const fetchAgentProfile = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return navigate('/login');
+      if (!user) return navigate('/login' + location.search);
 
       const { data, error } = await supabase
         .from('delivery_agents')
@@ -77,7 +71,7 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Error fetching profile:', error);
       alert('Dashboard Error: ' + error.message);
-      navigate('/login');
+      navigate('/login' + location.search);
     } finally {
       setLoading(false);
     }
@@ -95,9 +89,9 @@ const Dashboard = () => {
 
       subscription = supabase
         .channel(`agent-tasks-${userId}`)
-        .on('postgres_changes', { 
-          event: '*', 
-          schema: 'public', 
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
           table: 'bookings',
           filter: `agent_id=eq.${userId}`
         }, () => {
@@ -128,12 +122,12 @@ const Dashboard = () => {
 
       if (error) throw error;
       setTasks(data || []);
-      
+
       // Update stats based on fetched tasks
       const active = data.filter(t => ['pending', 'picked_up', 'out_for_delivery'].includes(t.delivery_status)).length;
       const pending = data.filter(t => t.delivery_status === 'pending').length;
       setStats(prev => ({ ...prev, activeTasks: active, pendingTasks: pending }));
-      
+
     } catch (error) {
       console.error('Error fetching tasks:', error);
     }
@@ -177,71 +171,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleScanSuccess = async (result) => {
-    if (!result) return;
-    const bookingId = typeof result === 'string' ? result : result[0].rawValue;
-    const { taskId, type } = scanModal;
-
-    console.log(`🔍 Scanned ID: ${bookingId} | Task ID: ${taskId}`);
-
-    // Simple verification: Scanned ID should match Booking ID (or long ID)
-    // In your system, the QR usually contains the Booking ID
-    
-    try {
-      setScanModal({ isOpen: false, taskId: null, type: null });
-      setActionLoading(taskId);
-
-      // Call the main backend scan-qr API to ensure all logic (payments, etc.) is handled
-      const response = await fetch(`${import.meta.env.VITE_API_URL.replace('/api', '')}/api/admin/scan-qr`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId: bookingId.trim() })
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        alert(data.message || 'Verification Successful!');
-        
-        // --- AUTO-ACTIVATE GPS TRACKING ON SCAN ---
-        if (type === 'start') {
-          // Force Online status to start GPS watcher
-          await supabase.from('delivery_agents')
-            .update({ 
-              availability_status: 'Online',
-              current_status: 'ON_DELIVERY' 
-            })
-            .eq('id', agent.id);
-          
-          setIsOnline(true);
-          setAgent(prev => ({ ...prev, current_status: 'ON_DELIVERY' }));
-        }
-
-        // If it was a return (end), set agent to RETURNING state
-        if (type === 'end') {
-          await supabase.from('delivery_agents')
-            .update({ 
-              availability_status: 'Online', // Keep online to track return trip
-              current_status: 'RETURNING' 
-            })
-            .eq('id', agent.id);
-          
-          setIsOnline(true);
-          setAgent(prev => ({ ...prev, current_status: 'RETURNING' }));
-        }
-        
-        fetchTasks(agent.id);
-      } else {
-        alert('Verification Failed: ' + (data.error || 'Invalid QR Code'));
-      }
-    } catch (error) {
-      console.error(error);
-      alert('Error during verification');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
   const toggleStatus = async () => {
     if (!agent) return alert('Profile not loaded yet');
 
@@ -250,7 +179,7 @@ const Dashboard = () => {
       console.log('🔄 Attempting to save status to DB:', newStatus);
       const { data, error } = await supabase
         .from('delivery_agents')
-        .update({ 
+        .update({
           availability_status: newStatus,
           current_status: newStatus === 'Online' ? 'AT_SHOP' : 'OFFLINE'
         })
@@ -288,6 +217,31 @@ const Dashboard = () => {
     }
   };
 
+  // --- AUTO ACCEPT LOGIC FROM EMAIL ---
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const acceptBookingId = params.get('acceptBookingId');
+
+    if (acceptBookingId && agent && tasks.length > 0) {
+      const taskToAccept = tasks.find(t => 
+        t.id === acceptBookingId || 
+        t.booking_id === acceptBookingId || 
+        t.id.toString() === acceptBookingId.toString()
+      );
+
+      if (taskToAccept && (taskToAccept.delivery_status === 'assigned' || taskToAccept.delivery_status === 'pending')) {
+        console.log('🚀 Auto-accepting task:', acceptBookingId);
+        acceptTask(taskToAccept);
+        
+        // Clean up URL
+        const newParams = new URLSearchParams(location.search);
+        newParams.delete('acceptBookingId');
+        const search = newParams.toString();
+        navigate(location.pathname + (search ? `?${search}` : ''), { replace: true });
+      }
+    }
+  }, [agent, tasks, location.search, navigate]);
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate('/login');
@@ -318,11 +272,11 @@ const Dashboard = () => {
             <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isOnline ? 'var(--success)' : 'var(--text-secondary)' }}>
               {isOnline ? 'ONLINE' : 'OFFLINE'}
             </span>
-            <div 
+            <div
               onClick={toggleStatus}
-              style={{ 
-                width: '50px', 
-                height: '26px', 
+              style={{
+                width: '50px',
+                height: '26px',
                 background: isOnline ? 'var(--success)' : '#cbd5e1',
                 borderRadius: '50px',
                 padding: '3px',
@@ -331,10 +285,10 @@ const Dashboard = () => {
                 transition: 'all 0.3s ease'
               }}
             >
-              <div style={{ 
-                width: '20px', 
-                height: '20px', 
-                background: 'white', 
+              <div style={{
+                width: '20px',
+                height: '20px',
+                background: 'white',
                 borderRadius: '50%',
                 position: 'absolute',
                 left: isOnline ? '27px' : '3px',
@@ -379,12 +333,12 @@ const Dashboard = () => {
             { label: 'ACTIVE TASKS', value: stats.activeTasks, icon: Clock, color: '#6366f1', bg: '#e0e7ff' },
             { label: 'PENDING TASKS', value: stats.pendingTasks, icon: CheckCircle2, color: '#f59e0b', bg: '#fef3c7' },
           ].map((stat, i) => (
-            <motion.div 
+            <motion.div
               key={i}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
-              className="glass-card" 
+              className="glass-card"
               style={{ padding: '20px' }}
             >
               <div className="flex between mb-4">
@@ -411,78 +365,33 @@ const Dashboard = () => {
             {tasks.length > 0 ? (
               <div className="tasks-list" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {tasks.map(task => (
-                  <div key={task.id} className="glass-card" style={{ padding: '25px', marginBottom: '25px', borderLeft: '5px solid var(--accent)', position: 'relative' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                  <div key={task.id} className="task-item glass-card" style={{ padding: '20px', border: '1px solid #e2e8f0' }}>
+                    <div className="flex between mb-4">
                       <div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px' }}>Booking ID</div>
-                        <h3 style={{ margin: 0, color: 'var(--text-primary)', fontWeight: 800 }}>{task.booking_id}</h3>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Booking ID</span>
+                        <div style={{ fontWeight: 800 }}>{task.booking_id || `#${task.id}`}</div>
                       </div>
-                      <span style={{ 
-                        padding: '6px 12px', background: '#e3f2fd', color: '#1976d2', 
-                        borderRadius: '20px', fontSize: '0.75rem', fontWeight: 'bold' 
-                      }}>
-                        {task.delivery_status?.toUpperCase().replace('_', ' ')}
-                      </span>
-                    </div>
-
-                    {/* NEW FULL-SERVICE SCHEDULE UI */}
-                    <div style={{ background: '#f0f9ff', borderRadius: '12px', padding: '15px', border: '1px solid #bae6fd', marginBottom: '20px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0369a1', fontWeight: 'bold', marginBottom: '15px', fontSize: '0.95rem' }}>
-                        <Clock size={18} />
-                        Full-Service Dispatch Schedule
-                      </div>
-
-                      {/* Part 1: Delivery */}
-                      <div style={{ marginBottom: '15px', paddingBottom: '15px', borderBottom: '1px dashed #bae6fd' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0c4a6e', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '8px' }}>
-                          <Truck size={16} />
-                          Part 1: Delivery (Drop-off)
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <LogOut size={14} color="#666" />
-                            <span>Leave Shop: <strong>{new Date(task.est_departure_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <Store size={14} color="#666" />
-                            <span>Back at Shop: <strong>{new Date(task.est_return_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Part 2: Collection */}
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0c4a6e', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '8px' }}>
-                          <RotateCcw size={16} />
-                          Part 2: Collection (Return Pickup)
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <LogOut size={14} color="#666" />
-                            <span>Leave Shop: <strong>{new Date(task.pickup_est_departure).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <Store size={14} color="#666" />
-                            <span>Back at Shop: <strong>{new Date(task.pickup_est_return).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></span>
-                          </div>
-                        </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span className={`status-badge`} style={{
+                          padding: '4px 12px',
+                          borderRadius: '50px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          background: task.delivery_status === 'assigned' ? '#e0e7ff' : (task.delivery_status === 'pending' ? '#fef3c7' : '#dcfce7'),
+                          color: task.delivery_status === 'assigned' ? '#4338ca' : (task.delivery_status === 'pending' ? '#d97706' : '#10b981')
+                        }}>
+                          {task.delivery_status === 'assigned' ? 'NEW ASSIGNMENT' : (task.delivery_status?.toUpperCase() || 'PENDING')}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="task-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
-                      <div className="task-info-item">
-                        <MapPin size={16} />
-                        <div>
-                          <div className="label">Delivery Address</div>
-                          <div className="value" style={{ fontSize: '0.85rem' }}>{task.delivery_address}</div>
-                        </div>
+                    <div className="flex gap-4 mb-4">
+                      <div style={{ background: '#f8fafc', padding: '10px', borderRadius: '12px' }}>
+                        <MapPin size={20} color="var(--accent)" />
                       </div>
-                      <div className="task-info-item">
-                        <Calendar size={16} />
-                        <div>
-                          <div className="label">Scheduled Time</div>
-                          <div className="value" style={{ fontSize: '0.85rem' }}>{new Date(task.start_date).toLocaleDateString()} at {task.start_time}</div>
-                        </div>
+                      <div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Delivery Address</div>
+                        <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{task.delivery_address}</div>
                       </div>
                     </div>
 
@@ -498,9 +407,9 @@ const Dashboard = () => {
                       </div>
                       <div className="flex gap-2">
                         {(task.delivery_status === 'assigned' || task.delivery_status === 'pending') && (
-                          <button 
-                            onClick={() => acceptTask(task)} 
-                            className="primary" 
+                          <button
+                            onClick={() => acceptTask(task)}
+                            className="primary"
                             disabled={actionLoading === task.id}
                             style={{ padding: '8px 16px', fontSize: '0.8rem', background: '#4338ca', opacity: actionLoading === task.id ? 0.7 : 1 }}
                           >
@@ -508,9 +417,9 @@ const Dashboard = () => {
                           </button>
                         )}
                         {task.delivery_status === 'accepted' && (
-                          <button 
-                            onClick={() => updateTaskStatus(task.id, 'picked_up')} 
-                            className="primary" 
+                          <button
+                            onClick={() => updateTaskStatus(task.id, 'picked_up')}
+                            className="primary"
                             disabled={actionLoading === task.id}
                             style={{ padding: '8px 16px', fontSize: '0.8rem', opacity: actionLoading === task.id ? 0.7 : 1 }}
                           >
@@ -518,25 +427,35 @@ const Dashboard = () => {
                           </button>
                         )}
                         {task.delivery_status === 'picked_up' && (
-                          <button 
-                            onClick={() => setScanModal({ isOpen: true, taskId: task.id, type: 'start' })} 
-                            className="primary" 
-                            disabled={actionLoading === task.id}
-                            style={{ padding: '8px 16px', fontSize: '0.8rem', background: '#f59e0b', opacity: actionLoading === task.id ? 0.7 : 1 }}
-                          >
-                            <Truck size={14} style={{ marginRight: '5px' }} />
-                            {actionLoading === task.id ? 'Processing...' : 'Scan to Start Ride'}
-                          </button>
-                        )}
-                        {task.delivery_status === 'out_for_delivery' && (
-                          <button 
-                            onClick={() => setScanModal({ isOpen: true, taskId: task.id, type: 'end' })} 
-                            className="primary" 
+                          <button
+                            onClick={() => updateTaskStatus(task.id, 'out_for_delivery')}
+                            className="primary"
                             disabled={actionLoading === task.id}
                             style={{ padding: '8px 16px', fontSize: '0.8rem', background: '#10b981', opacity: actionLoading === task.id ? 0.7 : 1 }}
                           >
-                            <CheckCircle2 size={14} style={{ marginRight: '5px' }} />
-                            {actionLoading === task.id ? 'Processing...' : 'Scan to End Ride'}
+                            {actionLoading === task.id ? 'Processing...' : 'Start Ride'}
+                          </button>
+                        )}
+                        {task.delivery_status === 'out_for_delivery' && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                setActionLoading(task.id);
+                                await updateTaskStatus(task.id, 'delivered');
+                                // After delivery, set agent to RETURNING state
+                                await supabase.from('delivery_agents').update({ current_status: 'RETURNING' }).eq('id', agent.id);
+                                setAgent(prev => ({ ...prev, current_status: 'RETURNING' }));
+                              } catch (e) {
+                                console.error(e);
+                              } finally {
+                                setActionLoading(null);
+                              }
+                            }}
+                            className="primary"
+                            disabled={actionLoading === task.id}
+                            style={{ padding: '8px 16px', fontSize: '0.8rem', background: 'var(--success)', opacity: actionLoading === task.id ? 0.7 : 1 }}
+                          >
+                            {actionLoading === task.id ? 'Processing...' : 'Mark Delivered'}
                           </button>
                         )}
                       </div>
@@ -574,15 +493,15 @@ const Dashboard = () => {
               </div>
 
               {agent?.current_status === 'RETURNING' && (
-                <motion.div 
-                  initial={{ scale: 0.9, opacity: 0 }} 
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   style={{ marginTop: '20px', padding: '15px', background: '#fff7ed', borderRadius: '12px', border: '2px solid #fdba74', textAlign: 'center' }}
                 >
                   <p style={{ fontWeight: 800, color: '#9a3412', marginBottom: '10px' }}>Are you back at the shop?</p>
-                  <button 
+                  <button
                     onClick={markArrivedAtShop}
-                    className="primary" 
+                    className="primary"
                     style={{ background: '#ea580c', width: '100%' }}
                   >
                     I am Back at Shop
@@ -601,36 +520,6 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
-
-      {/* QR SCAN MODAL */}
-      {scanModal.isOpen && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 1000, padding: '20px'
-        }}>
-          <div className="glass-card" style={{ width: '100%', maxWidth: '400px', padding: '25px', position: 'relative', background: 'white' }}>
-            <button 
-              onClick={() => setScanModal({ isOpen: false, taskId: null, type: null })}
-              style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}
-            >
-              &times;
-            </button>
-            <h3 style={{ marginTop: 0, marginBottom: '20px', textAlign: 'center', color: 'var(--text-primary)' }}>
-              {scanModal.type === 'start' ? 'Verify Delivery' : 'Confirm Collection'}
-            </h3>
-            <div style={{ borderRadius: '15px', overflow: 'hidden', border: '4px solid var(--accent)', marginBottom: '20px' }}>
-              <Scanner 
-                onScan={handleScanSuccess}
-                onError={(err) => console.error(err)}
-              />
-            </div>
-            <p style={{ textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-              Please scan the QR code displayed on the customer's device to {scanModal.type === 'start' ? 'start' : 'end'} the ride.
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
