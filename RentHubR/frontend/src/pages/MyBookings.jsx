@@ -38,7 +38,6 @@ const MyBookings = () => {
     const [newFee, setNewFee] = useState(0);
     const [newLat, setNewLat] = useState(null);
     const [newLng, setNewLng] = useState(null);
-    const [trackingBooking, setTrackingBooking] = useState(null);
     const SHOP_LOCATION = { lat: 21.492298, lng: 86.902777 };
     const RATE_PER_KM = 10;
 
@@ -48,6 +47,15 @@ const MyBookings = () => {
     useEffect(() => {
         fetchUserBookings();
     }, []);
+
+    // Old email links used ?track= — send users to the live map page
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const trackId = params.get('track');
+        if (trackId) {
+            navigate(`/live-tracking?bookingId=${encodeURIComponent(trackId)}`, { replace: true });
+        }
+    }, [navigate]);
 
     // Update current time every second to refresh cancel button visibility immediately
     useEffect(() => {
@@ -606,7 +614,7 @@ const MyBookings = () => {
                                           booking.delivery_status === 'returning') && (
                                             <div style={{ marginTop: '15px' }}>
                                                 <button 
-                                                    onClick={() => window.open(`/live-tracking?bookingId=${booking.id}`, '_blank')}
+                                                    onClick={() => window.open(`/live-tracking?bookingId=${encodeURIComponent(booking.booking_id || booking.id)}`, '_blank')}
                                                     style={{ 
                                                         width: '100%', 
                                                         padding: '12px', 
@@ -836,40 +844,6 @@ const MyBookings = () => {
                 title={popup.isOpen ? popup.title : 'Success!'}
                 message={popup.isOpen ? popup.message : successMessage}
             />
-            {/* LIVE TRACKING MODAL */}
-            {trackingBooking && (
-                <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                    <div style={{ background: 'white', width: '100%', maxWidth: '600px', borderRadius: '20px', overflow: 'hidden', position: 'relative' }}>
-                        <button onClick={() => setTrackingBooking(null)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'white', border: 'none', borderRadius: '50%', width: '35px', height: '35px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.2)', zIndex: 10, fontWeight: 'bold' }}>✕</button>
-                        
-                        <div style={{ padding: '20px', background: '#2563eb', color: 'white' }}>
-                            <h3 style={{ margin: 0 }}>Tracking Your Delivery</h3>
-                            <p style={{ margin: '5px 0 0 0', fontSize: '0.85rem', opacity: 0.9 }}>Agent is on the way to your location</p>
-                        </div>
-
-                        <div style={{ height: '400px', background: '#eee' }}>
-                            <iframe
-                                title="Live Tracking"
-                                width="100%"
-                                height="100%"
-                                style={{ border: 0 }}
-                                src={`https://www.google.com/maps/embed/v1/directions?key=AIzaSyDIIoFnrdbqEuukqUQ5XH4sNhD_9KncetA&origin=${trackingBooking.agent_lat || SHOP_LOCATION.lat},${trackingBooking.agent_lng || SHOP_LOCATION.lng}&destination=${trackingBooking.lat || trackingBooking.delivery_address}&mode=driving&language=en`}
-                            />
-                        </div>
-
-                        <div style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                                <div style={{ fontSize: '0.75rem', color: '#666' }}>ESTIMATED ARRIVAL</div>
-                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#2563eb' }}>Calculating...</div>
-                            </div>
-                            <div style={{ textAlign: 'right' }}>
-                                <div style={{ fontSize: '0.75rem', color: '#666' }}>DELIVERY AGENT</div>
-                                <div style={{ fontSize: '1rem', fontWeight: 700 }}>Assigned Expert</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
         </main>
     );
 };

@@ -3,6 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
 const path = require('path');
+const http = require('http');
+const socketIO = require('socket.io');
 const { initScheduler } = require('./utils/scheduler');
 
 const authRoutes = require('./routes/auth.routes');
@@ -15,9 +17,21 @@ const invoiceRoutes = require('./routes/invoice.routes');
 const chatbotRoutes = require('./routes/chatbot.routes');
 const userRoutes = require('./routes/user.routes');
 const supportRoutes = require('./routes/support.routes');
+const trackingRoutes = require('./routes/tracking.routes');
+const agentRoutes = require('./routes/agent.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3005;
+
+// Create HTTP server for Socket.io
+const server = http.createServer(app);
+const io = socketIO(server, {
+    cors: {
+        origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+        credentials: true,
+        methods: ['GET', 'POST']
+    }
+});
 
 // Middleware
 app.use(cors());
@@ -37,6 +51,8 @@ app.use('/api/payment', paymentRoutes);
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api', sosRoutes);
 app.use('/api/chatbot', chatbotRoutes);
+app.use('/api/tracking', trackingRoutes);
+app.use('/api/agent', agentRoutes);
 const reviewRoutes = require('./routes/review.routes');
 app.use('/api/reviews', reviewRoutes);
 const loyaltyRoutes = require('./routes/loyalty.routes');
@@ -73,10 +89,88 @@ app.get('*', (req, res) => {
 // Start Server
 const isProduction = process.env.NODE_ENV === 'production';
 
+// Socket.io event handlers for live tracking
+io.on('connection', (socket) => {
+    console.log('New WebSocket connection:', socket.id);
+
+    // Agent sends location update
+    socket.on('update-location', async (data) => {
+        const { agentId, latitude, longitude, accuracy, speed } = data;
+        console.log(`Location update from agent ${agentId}:`, latitude, longitude);
+
+        try {
+            const supabase = require('./config/supabase');
+            const { getISTTimestamp } = require('./utils/dateUtils');
+
+            // Update in database
+            // Keep delivery_agents in sync (customer live map reads this table)
+            await supabase
+                .from('delivery_agents')
+                .update({
+                    current_lat: latitude,
+                    current_lng: longitude,
+                    last_active: getISTTimestamp()
+                })
+                .eq('id', agentId);
+
+            const { error } = await supabase
+                .from('agent_tracking')
+                .upsert({
+                    agent_id: agentId,
+                    latitude,
+                    longitude,
+                    accuracy,
+                    speed,
+                    last_updated: getISTTimestamp(),
+                    is_active: true
+                }, { onConflict: 'agent_id' });
+
+            if (error) {
+                console.error('Error updating location:', error);
+                socket.emit('location-error', { error: error.message });
+            } else {
+                // Broadcast to all users tracking this agent
+                io.emit(`agent-location-${agentId}`, {
+                    agentId,
+                    latitude,
+                    longitude,
+                    accuracy,
+                    speed,
+                    timestamp: new Date()
+                });
+                socket.emit('location-saved', { success: true });
+            }
+        } catch (error) {
+            console.error('Error in location update:', error);
+            socket.emit('location-error', { error: error.message });
+        }
+    });
+
+    // User starts tracking agent
+    socket.on('track-agent', (data) => {
+        const { bookingId, userId, agentId } = data;
+        console.log(`User ${userId} tracking agent ${agentId} for booking ${bookingId}`);
+        socket.join(`booking-${bookingId}`);
+        socket.emit('tracking-started', { bookingId });
+    });
+
+    // Stop tracking
+    socket.on('stop-tracking', (data) => {
+        const { bookingId } = data;
+        socket.leave(`booking-${bookingId}`);
+        socket.emit('tracking-stopped', { bookingId });
+    });
+
+    socket.on('disconnect', () => {
+        console.log('Client disconnected:', socket.id);
+    });
+});
+
 if (!isProduction || process.env.RENDER) {
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}`);
         console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+        console.log(`WebSocket ready for live tracking`);
         initScheduler();
     });
 } else {

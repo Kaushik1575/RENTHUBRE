@@ -977,10 +977,13 @@ const acceptDelivery = async (req, res) => {
         const { bookingId } = req.params;
         const { agentId } = req.body;
 
-        // 1. Update Booking Status to accepted
+        // 1. Update Booking Status to accepted and ensure agent is linked
         const { data: booking, error: uError } = await supabase
             .from('bookings')
-            .update({ delivery_status: 'accepted' })
+            .update({
+                delivery_status: 'accepted',
+                agent_id: agentId
+            })
             .eq('id', bookingId)
             .select('*, users:user_id(full_name, email)')
             .single();
@@ -1003,8 +1006,8 @@ const acceptDelivery = async (req, res) => {
                 booking.users.email,
                 booking.users.full_name,
                 agent.full_name,
-                agent.phone_number,
-                booking.booking_id || bookingId
+                agent.mobile || agent.phone_number || '',
+                booking.booking_id || booking.id || bookingId
             );
         } catch (emailErr) {
             console.error('Failed to send tracking email:', emailErr);

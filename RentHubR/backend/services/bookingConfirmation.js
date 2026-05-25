@@ -118,7 +118,7 @@ router.get('/trackBooking', async (req, res) => {
         // Try to fetch booking from supabase
         try {
             console.log(`🔍 [TrackBooking] Request received for ID: '${id}'`);
-            let query = supabase.from('bookings').select('id, user_id, status, start_date, start_time, duration, vehicle_id, vehicle_type, advance_payment, created_at, booking_id, refund_amount, refund_status, confirmation_timestamp, delivery_option, delivery_status, agent_id, delivery_fee');
+            let query = supabase.from('bookings').select('id, user_id, status, start_date, start_time, duration, vehicle_id, vehicle_type, advance_payment, created_at, booking_id, refund_amount, refund_status, confirmation_timestamp, delivery_option, delivery_status, agent_id, delivery_fee, delivery_address, lat, lng');
 
             // Check if input looks like a string booking ID (starts with RH or BK)
             const idStr = id.toString().trim();
@@ -135,9 +135,20 @@ router.get('/trackBooking', async (req, res) => {
             if (data) console.log(`   ✅ Booking Found: ID ${data.id} / ${data.booking_id}`);
             if (error) console.error(`   ❌ Supabase Error:`, error.message);
             if (error || !data) {
-                return res.json({ id, status: 'unknown', message: 'Booking not found in DB (demo response)' });
+                return res.json({ success: false, message: 'Booking not found' });
             }
-            return res.json({ success: true, booking: data });
+
+            let agent = null;
+            if (data.agent_id) {
+                const { data: agentRow } = await supabase
+                    .from('delivery_agents')
+                    .select('id, full_name, mobile, current_lat, current_lng, last_active, availability_status')
+                    .eq('id', data.agent_id)
+                    .maybeSingle();
+                agent = agentRow || null;
+            }
+
+            return res.json({ success: true, booking: data, agent });
         } catch (e) {
             return res.json({ id, status: 'unknown', message: 'Unable to fetch booking' });
         }
