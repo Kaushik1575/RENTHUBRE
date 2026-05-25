@@ -147,10 +147,10 @@ app.post('/api/bookings/:bookingId/accept-delivery', async (req, res) => {
   try {
     console.log(`🤝 Agent ${agentId} is accepting booking ${bookingId}`);
 
-    // 1. Update Booking Status to accepted
+    // 1. Update Booking Status to accepted and link agent
     const { data: booking, error: uError } = await supabase
       .from('bookings')
-      .update({ delivery_status: 'accepted' })
+      .update({ delivery_status: 'accepted', agent_id: agentId })
       .eq('id', bookingId)
       .select('*, users:user_id(full_name, email)')
       .single();
@@ -168,7 +168,8 @@ app.post('/api/bookings/:bookingId/accept-delivery', async (req, res) => {
 
     // 3. Notify User with Tracking Link
     try {
-      const trackingLink = `${process.env.FRONTEND_URL}/my-bookings?track=${bookingId}`;
+      const trackId = booking.booking_id || bookingId;
+      const trackingLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/live-tracking?bookingId=${trackId}`;
       const html = `
         <div style="font-family: sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px; border-radius: 10px;">
             <h2 style="color: #16a34a;">✅ Delivery Agent Confirmed!</h2>
@@ -204,6 +205,34 @@ app.post('/api/bookings/:bookingId/accept-delivery', async (req, res) => {
   } catch (error) {
     console.error('❌ Accept Delivery Error:', error);
     res.status(500).json({ error: 'Failed to accept delivery: ' + error.message });
+  }
+});
+
+// Agent GPS — used by agent app (service role, reliable live tracking)
+app.post('/api/agent/update-location', async (req, res) => {
+  const { agentId, latitude, longitude, accuracy, speed } = req.body;
+  if (!agentId || latitude === undefined || longitude === undefined) {
+    return res.status(400).json({ success: false, message: 'agentId, latitude, longitude required' });
+  }
+  try {
+    const { data, error } = await supabase
+      .from('delivery_agents')
+      .update({
+        current_lat: Number(latitude),
+        current_lng: Number(longitude),
+        last_active: new Date().toISOString(),
+        ...(accuracy != null && { location_accuracy: Number(accuracy) }),
+        ...(speed != null && { location_speed: Number(speed) })
+      })
+      .eq('id', agentId)
+      .select('id, current_lat, current_lng, last_active')
+      .single();
+
+    if (error) throw error;
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error('❌ Location update failed:', err.message);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

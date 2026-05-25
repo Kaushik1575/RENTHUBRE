@@ -7,6 +7,9 @@ import {
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { pushAgentLocation } from '../utils/pushAgentLocation';
+
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3006/api').replace(/\/$/, '');
 
 const Dashboard = () => {
   const [agent, setAgent] = useState(null);
@@ -22,18 +25,23 @@ const Dashboard = () => {
     fetchAgentProfile();
   }, []);
 
-  // --- LIVE TRACKING LOGIC ---
+  const hasActiveDelivery = tasks.some((t) =>
+    ['accepted', 'picked_up', 'out_for_delivery', 'returning'].includes(t.delivery_status)
+  );
+  const shouldShareLocation = agent && (isOnline || hasActiveDelivery);
+
+  // --- LIVE TRACKING: share GPS when online or on active delivery ---
   useEffect(() => {
     let watchId = null;
 
-    if (isOnline && agent) {
-      console.log('📡 Starting Live Tracking...');
+    if (shouldShareLocation && navigator.geolocation) {
       watchId = navigator.geolocation.watchPosition(
         async (position) => {
-          const { latitude, longitude } = position.coords;
-          console.log(`📍 Location Update: ${latitude}, ${longitude}`);
-
-          // Update Supabase with current position
+          const { latitude, longitude, accuracy, speed } = position.coords;
+          await pushAgentLocation(agent.id, latitude, longitude, {
+            accuracy,
+            speed: speed != null ? speed * 3.6 : undefined
+          });
           await supabase
             .from('delivery_agents')
             .update({
@@ -44,14 +52,14 @@ const Dashboard = () => {
             .eq('id', agent.id);
         },
         (error) => console.error('Tracking Error:', error),
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
       );
     }
 
     return () => {
       if (watchId) navigator.geolocation.clearWatch(watchId);
     };
-  }, [isOnline, agent]);
+  }, [shouldShareLocation, agent?.id]);
 
   const fetchAgentProfile = async () => {
     try {
@@ -137,7 +145,7 @@ const Dashboard = () => {
     try {
       setActionLoading(task.id);
       // Call official backend API for acceptance and user notification
-      const response = await fetch(`${import.meta.env.VITE_API_URL.replace('/api', '')}/api/bookings/${task.id}/accept-delivery`, {
+      const response = await fetch(`${API_BASE}/bookings/${task.id}/accept-delivery`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agentId: agent.id })
@@ -157,6 +165,15 @@ const Dashboard = () => {
   const updateTaskStatus = async (bookingId, newStatus) => {
     try {
       setActionLoading(bookingId);
+
+      if (newStatus === 'out_for_delivery' && !isOnline) {
+        await supabase
+          .from('delivery_agents')
+          .update({ availability_status: 'Online', current_status: 'ON_DELIVERY' })
+          .eq('id', agent.id);
+        setIsOnline(true);
+      }
+
       const { error } = await supabase
         .from('bookings')
         .update({ delivery_status: newStatus })
