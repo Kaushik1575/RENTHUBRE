@@ -7,7 +7,16 @@ import {
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { pushAgentLocation } from '../utils/pushAgentLocation';
+import LocationPermissionBanner from '../components/LocationPermissionBanner';
+import {
+  isMobileDevice,
+  isGeolocationSupported,
+  getLocationPermissionState,
+  requestAgentLocationPermission,
+  startAgentLocationTracking,
+  stopAgentLocationTracking,
+  setOnPositionCallback
+} from '../utils/agentGeolocation';
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3006/api').replace(/\/$/, '');
 
@@ -18,6 +27,9 @@ const Dashboard = () => {
   const [tasks, setTasks] = useState([]);
   const [actionLoading, setActionLoading] = useState(null); // Track which task is being updated
   const [stats, setStats] = useState({ todayDeliveries: 0, earnings: 0, activeTasks: 0, pendingTasks: 0 });
+  const [locationPermission, setLocationPermission] = useState('prompt');
+  const [locationError, setLocationError] = useState('');
+  const [locationEnabling, setLocationEnabling] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -30,36 +42,66 @@ const Dashboard = () => {
   );
   const shouldShareLocation = agent && (isOnline || hasActiveDelivery);
 
-  // --- LIVE TRACKING: share GPS when online or on active delivery ---
-  useEffect(() => {
-    let watchId = null;
+  // On phone: full-screen prompt until GPS allowed (like Uber/Ola driver app)
+  const showLocationBanner =
+    agent &&
+    !loading &&
+    isMobileDevice() &&
+    locationPermission !== 'granted' &&
+    locationPermission !== 'unsupported';
 
-    if (shouldShareLocation && navigator.geolocation) {
-      watchId = navigator.geolocation.watchPosition(
-        async (position) => {
-          const { latitude, longitude, accuracy, speed } = position.coords;
-          await pushAgentLocation(agent.id, latitude, longitude, {
-            accuracy,
-            speed: speed != null ? speed * 3.6 : undefined
-          });
-          await supabase
-            .from('delivery_agents')
-            .update({
-              current_lat: latitude,
-              current_lng: longitude,
-              last_active: new Date().toISOString()
-            })
-            .eq('id', agent.id);
-        },
-        (error) => console.error('Tracking Error:', error),
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
-      );
+  useEffect(() => {
+    if (!agent) return;
+    getLocationPermissionState().then(setLocationPermission);
+  }, [agent]);
+
+  const syncPositionToDb = async (position) => {
+    const { latitude, longitude } = position.coords;
+    await supabase
+      .from('delivery_agents')
+      .update({
+        current_lat: latitude,
+        current_lng: longitude,
+        last_active: new Date().toISOString()
+      })
+      .eq('id', agent.id);
+  };
+
+  const handleEnableLocation = async () => {
+    setLocationEnabling(true);
+    setLocationError('');
+    const result = await requestAgentLocationPermission();
+    setLocationEnabling(false);
+
+    if (!result.ok) {
+      setLocationError(result.message);
+      setLocationPermission('denied');
+      return;
     }
 
+    setLocationPermission('granted');
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => await syncPositionToDb(pos),
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 0 }
+    );
+  };
+
+  // Continuous GPS after permission granted
+  useEffect(() => {
+    if (!shouldShareLocation || !agent?.id || locationPermission !== 'granted') {
+      stopAgentLocationTracking();
+      return;
+    }
+
+    setOnPositionCallback(syncPositionToDb);
+    startAgentLocationTracking(agent.id, (msg) => setLocationError(msg));
+
     return () => {
-      if (watchId) navigator.geolocation.clearWatch(watchId);
+      stopAgentLocationTracking();
+      setOnPositionCallback(null);
     };
-  }, [shouldShareLocation, agent?.id]);
+  }, [shouldShareLocation, agent?.id, locationPermission]);
 
   const fetchAgentProfile = async () => {
     try {
@@ -166,12 +208,23 @@ const Dashboard = () => {
     try {
       setActionLoading(bookingId);
 
-      if (newStatus === 'out_for_delivery' && !isOnline) {
-        await supabase
-          .from('delivery_agents')
-          .update({ availability_status: 'Online', current_status: 'ON_DELIVERY' })
-          .eq('id', agent.id);
-        setIsOnline(true);
+      if (newStatus === 'out_for_delivery') {
+        if (locationPermission !== 'granted') {
+          const result = await requestAgentLocationPermission();
+          if (!result.ok) {
+            setLocationError(result.message);
+            alert(result.message);
+            return;
+          }
+          setLocationPermission('granted');
+        }
+        if (!isOnline) {
+          await supabase
+            .from('delivery_agents')
+            .update({ availability_status: 'Online', current_status: 'ON_DELIVERY' })
+            .eq('id', agent.id);
+          setIsOnline(true);
+        }
       }
 
       const { error } = await supabase
@@ -192,6 +245,22 @@ const Dashboard = () => {
     if (!agent) return alert('Profile not loaded yet');
 
     const newStatus = isOnline ? 'Offline' : 'Online';
+
+    if (newStatus === 'Online') {
+      if (!isGeolocationSupported()) {
+        return alert('GPS is not supported in this browser. Use Chrome or Safari on your phone.');
+      }
+      if (locationPermission !== 'granted') {
+        const result = await requestAgentLocationPermission();
+        if (!result.ok) {
+          setLocationError(result.message);
+          setLocationPermission('denied');
+          return;
+        }
+        setLocationPermission('granted');
+      }
+    }
+
     try {
       console.log('🔄 Attempting to save status to DB:', newStatus);
       const { data, error } = await supabase
@@ -272,6 +341,14 @@ const Dashboard = () => {
 
   return (
     <div className="dashboard-layout" style={{ minHeight: '100vh', background: '#f8fafc' }}>
+      {showLocationBanner && (
+        <LocationPermissionBanner
+          onEnable={handleEnableLocation}
+          loading={locationEnabling}
+          errorMessage={locationError}
+        />
+      )}
+
       {/* Top Navigation */}
       <nav className="glass-card" style={{ borderRadius: 0, padding: '1rem 2rem', marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>
         <div className="flex gap-3">
